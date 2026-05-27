@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#050505" />
+    <meta name="description" content="John Bad News delivers difficult messages with discretion, professionalism, and impact." />
+    <script>
+      if (window.location.protocol === "http:" && /(^|\.)40bingo\.com$/i.test(window.location.hostname)) {
+        window.location.replace(`https://${window.location.host}${window.location.pathname}${window.location.search}${window.location.hash}`);
+      }
+    </script>
+    <script>
+      (function () {
+        try {
+          const storedTheme = window.localStorage.getItem("40bingo_theme_mode") ?? window.localStorage.getItem("ethio_bingo_theme_mode");
+          const mode =
+            storedTheme === "dark" || storedTheme === "light"
+              ? storedTheme
+              : window.matchMedia?.("(prefers-color-scheme: dark)")?.matches
+                ? "dark"
+                : "light";
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+    <title>John Bad News | Discreet Message Delivery</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Teko:wght@500;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="/runtime-config.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
