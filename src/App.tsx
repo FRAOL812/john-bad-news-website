@@ -241,6 +241,8 @@ const formTranslations = {
     receiptUpload: "Click to upload receipt",
     receiptHelp: "Upload a CBE screenshot with the QR/payment link visible. JPG or PNG only.",
     receiptReady: "CBE receipt link found",
+    receiptChecking: "Checking receipt screenshot...",
+    receiptCheckingWait: "Please wait while we check your receipt screenshot.",
     receiptMissing: "Please upload your payment receipt before submitting.",
     receiptInvalidType: "Upload a JPG or PNG CBE receipt screenshot only.",
     receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a CBE screenshot with the QR/payment link visible.",
@@ -274,6 +276,8 @@ const formTranslations = {
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
     receiptHelp: "የQR/payment link የሚታይበት የCBE ስክሪንሾት ይስቀሉ። JPG ወይም PNG ብቻ።",
     receiptReady: "የCBE ደረሰኝ ሊንክ ተገኝቷል",
+    receiptChecking: "የደረሰኝ ስክሪንሾት እየተመረመረ ነው...",
+    receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
     receiptMissing: "ከመላክዎ በፊት የክፍያ ደረሰኝዎን ይስቀሉ።",
     receiptInvalidType: "የCBE ደረሰኝ JPG ወይም PNG ስክሪንሾት ብቻ ይስቀሉ።",
     receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። QR/payment link የሚታይበት የCBE ስክሪንሾት ይስቀሉ።",
@@ -330,8 +334,8 @@ const pageTranslations = {
     eyebrow: "መጥፎ ዜና",
     nav: ["መነሻ", "እንዴት ይሰራል", "ስለ እኛ", "አስተያየቶች", "ጥያቄ", "አግኙን"],
     cta: "መልእክት ላክ",
-    headline1: "እናደርሳለን",
-    headline2: "መጥፎ ዜናውን",
+    headline1: "ለመናገር የሚከብድ መጥፎ ዜናዎትን",
+    headline2: "እናደርሳለን",
     headline3: "እርስዎ ማለት የማይፈልጉትን።",
     intro: "ጆን ባድ ኒውስ አስቸጋሪ መልእክቶችን በምስጢር፣ በሙያዊነት እና በጥንቃቄ ያደርሳል።",
     submit: "ላክ",
@@ -523,6 +527,7 @@ export default function App() {
   const [receiptName, setReceiptName] = useState("");
   const [receiptError, setReceiptError] = useState("");
   const [cbeReceiptUrl, setCbeReceiptUrl] = useState("");
+  const [isReceiptChecking, setIsReceiptChecking] = useState(false);
   const [audioName, setAudioName] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
@@ -541,6 +546,12 @@ export default function App() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setSubmissionError("");
+
+    if (isReceiptChecking) {
+      setReceiptError(formText.receiptCheckingWait);
+      setSubmitted(false);
+      return;
+    }
 
     if (!receiptName) {
       setReceiptError(formText.receiptMissing);
@@ -610,6 +621,7 @@ export default function App() {
     setSubmitted(false);
     setSubmissionError("");
     setCbeReceiptUrl("");
+    setIsReceiptChecking(false);
 
     if (!file) {
       setReceiptName("");
@@ -655,6 +667,9 @@ export default function App() {
     }
 
     try {
+      setReceiptName(file.name);
+      setReceiptError("");
+      setIsReceiptChecking(true);
       const extractedUrl = await readCbeReceiptUrlFromImage(file);
 
       if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
@@ -673,6 +688,8 @@ export default function App() {
       setReceiptName("");
       setCbeReceiptUrl("");
       setReceiptError(formText.receiptQrUnsupported);
+    } finally {
+      setIsReceiptChecking(false);
     }
   }
 
@@ -818,15 +835,17 @@ export default function App() {
                   aria-describedby="receipt-status"
                   onChange={handleReceiptChange}
                 />
-                <span className={`upload-box ${receiptError ? "is-error" : receiptName ? "is-valid" : ""}`}>
+                <span className={`upload-box ${isReceiptChecking ? "is-uploading" : receiptError ? "is-error" : receiptName ? "is-valid" : ""}`}>
                   <Icon name="upload" />
                   <strong>{receiptName || formText.receiptUpload}</strong>
-                  <small id="receipt-status">{receiptError || (receiptName ? formText.receiptReady : formText.receiptHelp)}</small>
+                  <small id="receipt-status">
+                    {isReceiptChecking ? formText.receiptChecking : receiptError || (receiptName ? formText.receiptReady : formText.receiptHelp)}
+                  </small>
                 </span>
               </label>
 
-              <button className="submit-button" type="submit" disabled={Boolean(receiptError) || isRecording}>
-                <Icon name="send" /> {isRecording ? formText.recording : text.submit}
+              <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || isRecording}>
+                <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}
               </button>
               {submitted && <output className="form-success">{formText.success}</output>}
               {submissionError && <output className="form-error">{submissionError}</output>}
