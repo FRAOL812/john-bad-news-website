@@ -764,7 +764,7 @@ export default function App() {
                 <span>
                   <Icon name="phone" /> {formText.phone}
                 </span>
-                <input name="phone" type="tel" defaultValue="+251" pattern="^\+?[0-9\s-]{9,16}$" required />
+                <input name="phone" type="tel" defaultValue="+251" pattern="[+]?[0-9 ]{9,16}" required />
               </label>
 
               <label>
