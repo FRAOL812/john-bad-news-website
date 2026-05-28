@@ -9,6 +9,7 @@ const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
 const MAX_RECEIPT_FIELD_LENGTH = 140;
+const FINAL_REQUEST_SHEETS = [VERIFIED_SHEET_NAME, REJECTED_SHEET_NAME];
 const REQUEST_HEADERS = [
   "Received At",
   "Submission ID",
@@ -47,14 +48,21 @@ function doPost(event) {
 
   try {
     const data = JSON.parse(rawBody);
+    data.cbeReceiptUrl = normalizeCbeReceiptUrl(data.cbeReceiptUrl);
     const audioLink = saveAudioFile(data);
-    appendIncoming(spreadsheet, receivedAt, data, audioLink);
     const verification = verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
 
-    if (verification.ok && isDuplicateReference(spreadsheet, verification.reference)) {
+    if (isDuplicateReceiptUrl(spreadsheet, data.cbeReceiptUrl)) {
+      verification.ok = false;
+      verification.errors.push("CBE receipt link has already been submitted");
+    }
+
+    if (verification.reference && isDuplicateReference(spreadsheet, verification.reference)) {
       verification.ok = false;
       verification.errors.push("Reference number has already been used");
     }
+
+    appendIncoming(spreadsheet, receivedAt, data, audioLink);
 
     if (!verification.ok) {
       appendRejected(spreadsheet, receivedAt, data, verification);
@@ -92,7 +100,7 @@ function doPost(event) {
 
 function verifyCbeReceipt(receiptUrl, receivedAt) {
   const errors = [];
-  const url = String(receiptUrl || "").trim();
+  const url = normalizeCbeReceiptUrl(receiptUrl);
 
   if (!url.toLowerCase().startsWith(CBE_RECEIPT_BASE_URL)) {
     return { ok: false, errors: ["Missing or invalid CBE receipt URL"] };
@@ -156,6 +164,13 @@ function verifyCbeReceipt(receiptUrl, receivedAt) {
   };
 }
 
+function normalizeCbeReceiptUrl(receiptUrl) {
+  const url = String(receiptUrl || "").trim();
+  const match = url.match(/^https?:\/\/mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)\/?$/i);
+
+  return match ? `${CBE_RECEIPT_BASE_URL}${match[1]}` : url;
+}
+
 function normalizeReceiptText(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -217,14 +232,46 @@ function isDuplicateReference(spreadsheet, reference) {
     return false;
   }
 
-  const sheet = spreadsheet.getSheetByName(VERIFIED_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 2) {
+  return isDuplicateSheetValue(spreadsheet, "Reference No", reference);
+}
+
+function isDuplicateReceiptUrl(spreadsheet, receiptUrl) {
+  const normalizedReceiptUrl = normalizeCbeReceiptUrl(receiptUrl);
+  return normalizedReceiptUrl ? isDuplicateSheetValue(spreadsheet, "CBE Receipt Link", normalizedReceiptUrl) : false;
+}
+
+function isDuplicateSheetValue(spreadsheet, headerName, expectedValue) {
+  const expectedCleanValue = normalizeComparableSheetValue(expectedValue);
+
+  if (!expectedCleanValue) {
     return false;
   }
 
-  const referenceColumn = REQUEST_HEADERS.indexOf("Reference No") + 1;
-  const references = sheet.getRange(2, referenceColumn, sheet.getLastRow() - 1, 1).getValues().flat();
-  return references.some((value) => String(value).trim() === reference);
+  return FINAL_REQUEST_SHEETS.some((sheetName) => {
+    const sheet = spreadsheet.getSheetByName(sheetName);
+
+    if (!sheet || sheet.getLastRow() < 2) {
+      return false;
+    }
+
+    const headerColumn = getHeaderColumn(sheet, headerName);
+
+    if (!headerColumn) {
+      return false;
+    }
+
+    const values = sheet.getRange(2, headerColumn, sheet.getLastRow() - 1, 1).getValues().flat();
+    return values.some((value) => normalizeComparableSheetValue(value) === expectedCleanValue);
+  });
+}
+
+function getHeaderColumn(sheet, headerName) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(cleanCell);
+  return headers.indexOf(headerName) + 1;
+}
+
+function normalizeComparableSheetValue(value) {
+  return normalizeCbeReceiptUrl(String(value || "").replace(/^=HYPERLINK\("([^"]+)".*$/i, "$1")).trim().toLowerCase();
 }
 
 function appendRejected(spreadsheet, receivedAt, data, verification) {
