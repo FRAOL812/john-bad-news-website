@@ -243,7 +243,6 @@ function appendIncoming(spreadsheet, receivedAt, data, rawBody) {
     cleanCell(data.receiptFile),
     cleanCell(data.language),
     "",
-    rawBody,
   ]);
 }
 
@@ -269,7 +268,7 @@ function appendRequestRow(spreadsheet, sheetName, row) {
 }
 
 function ensureIncomingHeader(sheet) {
-  ensureHeader(sheet, REQUEST_HEADERS.concat(["Raw Body"]));
+  ensureHeader(sheet, REQUEST_HEADERS);
 }
 
 function ensureRequestHeader(sheet) {
