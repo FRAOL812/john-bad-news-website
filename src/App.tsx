@@ -134,28 +134,44 @@ async function readReceiptUrlWithJsQr(file: File) {
       image.src = imageUrl;
     });
 
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth || image.width;
-    canvas.height = image.naturalHeight || image.height;
+    const imageWidth = image.naturalWidth || image.width;
+    const imageHeight = image.naturalHeight || image.height;
+    const rotations = [0, 90, 180, 270];
 
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context || !canvas.width || !canvas.height) {
-      throw new Error("Canvas QR scanner is not available.");
+    for (const rotation of rotations) {
+      const canvas = document.createElement("canvas");
+      const isSideways = rotation === 90 || rotation === 270;
+      canvas.width = isSideways ? imageHeight : imageWidth;
+      canvas.height = isSideways ? imageWidth : imageHeight;
+
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context || !canvas.width || !canvas.height) {
+        throw new Error("Canvas QR scanner is not available.");
+      }
+
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate((rotation * Math.PI) / 180);
+      context.drawImage(image, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      const rawValue = code?.data ?? "";
+      const cbeReceiptUrl = getCbeReceiptUrl(rawValue);
+
+      console.info("[receipt] jsQR scan attempt completed", {
+        rotation,
+        rawValue,
+        cbeReceiptUrl,
+        imageWidth: canvas.width,
+        imageHeight: canvas.height,
+      });
+
+      if (cbeReceiptUrl) {
+        return cbeReceiptUrl;
+      }
     }
 
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
-    const rawValue = code?.data ?? "";
-
-    console.info("[receipt] jsQR scan completed", {
-      rawValue,
-      cbeReceiptUrl: getCbeReceiptUrl(rawValue),
-      imageWidth: canvas.width,
-      imageHeight: canvas.height,
-    });
-
-    return getCbeReceiptUrl(rawValue);
+    return "";
   } finally {
     URL.revokeObjectURL(imageUrl);
   }
@@ -701,7 +717,8 @@ export default function App() {
   }
 
   async function handleReceiptChange(event: FormEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
+    const receiptInput = event.currentTarget;
+    const file = receiptInput.files?.[0];
     setSubmitted(false);
     setSubmissionError("");
     setCbeReceiptUrl("");
@@ -723,7 +740,7 @@ export default function App() {
 
     if (!canScanReceiptQr()) {
       console.warn("[receipt] Receipt scan blocked by browser capability/context", getReceiptScanDiagnostics());
-      event.currentTarget.value = "";
+      receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
       setReceiptError(formText.receiptQrUnsupported);
@@ -737,7 +754,7 @@ export default function App() {
 
     if (isPdf) {
       console.warn("[receipt] Rejected PDF receipt", { name: file.name, type: file.type });
-      event.currentTarget.value = "";
+      receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
       setReceiptError(formText.receiptPdfUnsupported);
@@ -751,7 +768,7 @@ export default function App() {
         hasAcceptedExtension,
         hasAcceptedType,
       });
-      event.currentTarget.value = "";
+      receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
       setReceiptError(formText.receiptInvalidType);
@@ -764,7 +781,7 @@ export default function App() {
         size: file.size,
         maxReceiptSize,
       });
-      event.currentTarget.value = "";
+      receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
       setReceiptError(formText.receiptTooLarge);
@@ -783,7 +800,7 @@ export default function App() {
           extractedUrl,
           expectedBaseUrl: cbeReceiptBaseUrl,
         });
-        event.currentTarget.value = "";
+        receiptInput.value = "";
         setReceiptName("");
         setCbeReceiptUrl("");
         setReceiptError(formText.receiptQrMissing);
@@ -803,7 +820,7 @@ export default function App() {
         error,
         diagnostics: getReceiptScanDiagnostics(),
       });
-      event.currentTarget.value = "";
+      receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
       setReceiptError(formText.receiptQrMissing);
