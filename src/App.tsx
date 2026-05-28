@@ -178,19 +178,42 @@ async function readReceiptUrlWithJsQr(file: File) {
   }
 }
 
+async function readReceiptUrlWithOcr(file: File) {
+  console.info("[receipt] Using OCR fallback scanner");
+  const { recognize } = await import("tesseract.js");
+  const result = await recognize(file, "eng");
+  const text = result.data.text;
+  const cbeReceiptUrl = getCbeReceiptUrl(text);
+
+  console.info("[receipt] OCR scan completed", {
+    cbeReceiptUrl,
+    textPreview: text.replace(/\s+/g, " ").slice(0, 240),
+  });
+
+  return cbeReceiptUrl;
+}
+
 async function readCbeReceiptUrlFromImage(file: File) {
   if (!canScanReceiptQr()) {
     console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
     throw new Error("Receipt QR scanning is not available in this browser/context.");
   }
 
+  let cbeReceiptUrl = "";
+
   if (window.BarcodeDetector && "createImageBitmap" in window) {
     console.info("[receipt] Using native BarcodeDetector scanner");
-    return readReceiptUrlWithBarcodeDetector(file);
+    cbeReceiptUrl = await readReceiptUrlWithBarcodeDetector(file);
+  } else {
+    console.info("[receipt] Using jsQR fallback scanner");
+    cbeReceiptUrl = await readReceiptUrlWithJsQr(file);
   }
 
-  console.info("[receipt] Using jsQR fallback scanner");
-  return readReceiptUrlWithJsQr(file);
+  if (cbeReceiptUrl) {
+    return cbeReceiptUrl;
+  }
+
+  return readReceiptUrlWithOcr(file);
 }
 
 async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
@@ -340,18 +363,15 @@ const formTranslations = {
     paymentTooLow: "The base price is 500 Birr. Please enter at least 500 Birr.",
     paymentStatusPending: "Pending receipt confirmation",
     receiptUpload: "Click to upload receipt",
-    receiptHelp: "Upload a CBE screenshot with the QR/payment link visible. JPG or PNG only.",
-    receiptLink: "CBE receipt link",
-    receiptLinkPlaceholder: "Paste https://mbreciept.cbe.com.et/... if no QR is shown",
-    receiptLinkInvalid: "Paste a valid CBE receipt link from the screenshot.",
+    receiptHelp: "Upload a CBE screenshot with the QR code or receipt link visible. JPG or PNG only.",
     receiptReady: "CBE receipt link found",
-    receiptChecking: "Checking receipt screenshot...",
+    receiptChecking: "Checking screenshot for CBE receipt link...",
     receiptCheckingWait: "Please wait while we check your receipt screenshot.",
     receiptMissing: "Please upload your payment receipt before submitting.",
     receiptInvalidType: "Upload a JPG or PNG CBE receipt screenshot only.",
     receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a CBE screenshot with the QR/payment link visible.",
     receiptTooLarge: "Receipt must be 5MB or smaller.",
-    receiptQrMissing: "No QR code was found in this screenshot. Paste the CBE receipt link below.",
+    receiptQrMissing: "No CBE receipt link was found. Upload a clear screenshot that shows the QR code or receipt link.",
     receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the CBE screenshot again.",
     success: "Your receipt was sent for automatic CBE verification. Verified requests appear in the live sheet.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
@@ -378,18 +398,15 @@ const formTranslations = {
     paymentTooLow: "መነሻ ዋጋው 500 ብር ነው። እባክዎ ቢያንስ 500 ብር ያስገቡ።",
     paymentStatusPending: "ደረሰኝ ማረጋገጫ በመጠባበቅ ላይ",
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
-    receiptHelp: "የQR/payment link የሚታይበት የCBE ስክሪንሾት ይስቀሉ። JPG ወይም PNG ብቻ።",
-    receiptLink: "የCBE ደረሰኝ ሊንክ",
-    receiptLinkPlaceholder: "QR ከሌለ https://mbreciept.cbe.com.et/... ሊንኩን ይለጥፉ",
-    receiptLinkInvalid: "ከስክሪንሾቱ ውስጥ ትክክለኛ የCBE ደረሰኝ ሊንክ ይለጥፉ።",
+    receiptHelp: "QR code ወይም receipt link የሚታይበት የCBE ስክሪንሾት ይስቀሉ። JPG ወይም PNG ብቻ።",
     receiptReady: "የCBE ደረሰኝ ሊንክ ተገኝቷል",
-    receiptChecking: "የደረሰኝ ስክሪንሾት እየተመረመረ ነው...",
+    receiptChecking: "የCBE ደረሰኝ ሊንክ በስክሪንሾቱ ውስጥ እየተፈለገ ነው...",
     receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
     receiptMissing: "ከመላክዎ በፊት የክፍያ ደረሰኝዎን ይስቀሉ።",
     receiptInvalidType: "የCBE ደረሰኝ JPG ወይም PNG ስክሪንሾት ብቻ ይስቀሉ።",
     receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። QR/payment link የሚታይበት የCBE ስክሪንሾት ይስቀሉ።",
     receiptTooLarge: "ደረሰኙ 5MB ወይም ከዚያ በታች መሆን አለበት።",
-    receiptQrMissing: "በዚህ ስክሪንሾት QR code አልተገኘም። የCBE ደረሰኝ ሊንኩን ከታች ይለጥፉ።",
+    receiptQrMissing: "የCBE ደረሰኝ ሊንክ አልተገኘም። QR code ወይም receipt link የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
     receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደገፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የCBE ስክሪንሾቱን እንደገና ይስቀሉ።",
     success: "ደረሰኝዎ ለCBE ራስ-ሰር ማረጋገጫ ተልኳል። የተረጋገጡ ጥያቄዎች በቀጥታ ሰንጠረዡ ውስጥ ይታያሉ።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
@@ -634,7 +651,6 @@ export default function App() {
   const [receiptName, setReceiptName] = useState("");
   const [receiptError, setReceiptError] = useState("");
   const [cbeReceiptUrl, setCbeReceiptUrl] = useState("");
-  const [manualReceiptUrl, setManualReceiptUrl] = useState("");
   const [isReceiptChecking, setIsReceiptChecking] = useState(false);
   const [audioName, setAudioName] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -661,16 +677,13 @@ export default function App() {
       return;
     }
 
-    const manualCbeReceiptUrl = getCbeReceiptUrl(String(form.get("cbeReceiptLink") ?? ""));
-    const finalCbeReceiptUrl = cbeReceiptUrl || manualCbeReceiptUrl;
-
     if (!receiptName) {
       setReceiptError(formText.receiptMissing);
       setSubmitted(false);
       return;
     }
 
-    if (!finalCbeReceiptUrl) {
+    if (!cbeReceiptUrl) {
       setReceiptError(formText.receiptQrMissing);
       setSubmitted(false);
       return;
@@ -704,7 +717,7 @@ export default function App() {
       receiver: String(form.get("receiver") ?? ""),
       paymentAmount: `${paymentAmount}`,
       paymentStatus: formText.paymentStatusPending,
-      cbeReceiptUrl: finalCbeReceiptUrl,
+      cbeReceiptUrl,
       audioFile: audioName || "-",
       receiptFile: receiptName,
       language,
@@ -718,7 +731,6 @@ export default function App() {
       event.currentTarget.reset();
       setReceiptName("");
       setCbeReceiptUrl("");
-      setManualReceiptUrl("");
       setAudioName("");
     } catch {
       setSubmitted(false);
@@ -807,15 +819,13 @@ export default function App() {
       const extractedUrl = await readCbeReceiptUrlFromImage(file);
 
       if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
-        const manualCbeReceiptUrl = getCbeReceiptUrl(manualReceiptUrl);
-        console.warn("[receipt] No CBE receipt URL found in QR scan", {
+        console.warn("[receipt] No CBE receipt URL found in screenshot scan", {
           name: file.name,
           extractedUrl,
           expectedBaseUrl: cbeReceiptBaseUrl,
-          hasManualReceiptUrl: Boolean(manualCbeReceiptUrl),
         });
-        setCbeReceiptUrl(manualCbeReceiptUrl);
-        setReceiptError(manualCbeReceiptUrl ? "" : formText.receiptQrMissing);
+        setCbeReceiptUrl("");
+        setReceiptError(formText.receiptQrMissing);
         return;
       }
 
@@ -832,36 +842,11 @@ export default function App() {
         error,
         diagnostics: getReceiptScanDiagnostics(),
       });
-      const manualCbeReceiptUrl = getCbeReceiptUrl(manualReceiptUrl);
-      setCbeReceiptUrl(manualCbeReceiptUrl);
-      setReceiptError(manualCbeReceiptUrl ? "" : formText.receiptQrMissing);
+      setCbeReceiptUrl("");
+      setReceiptError(formText.receiptQrMissing);
     } finally {
       setIsReceiptChecking(false);
     }
-  }
-
-  function handleManualReceiptUrlChange(value: string) {
-    setSubmitted(false);
-    setSubmissionError("");
-    setManualReceiptUrl(value);
-
-    const extractedUrl = getCbeReceiptUrl(value);
-    if (!value.trim()) {
-      setCbeReceiptUrl("");
-      setReceiptError(receiptName ? formText.receiptQrMissing : "");
-      return;
-    }
-
-    if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
-      console.warn("[receipt] Manual CBE receipt link is invalid", { value });
-      setCbeReceiptUrl("");
-      setReceiptError(formText.receiptLinkInvalid);
-      return;
-    }
-
-    console.info("[receipt] Manual CBE receipt URL accepted", { cbeReceiptUrl: extractedUrl });
-    setCbeReceiptUrl(extractedUrl);
-    setReceiptError("");
   }
 
   return (
@@ -1018,20 +1003,6 @@ export default function App() {
                     </span>
                   )}
                 </span>
-              </label>
-
-              <label>
-                <span>
-                  <Icon name="receipt" /> {formText.receiptLink}
-                </span>
-                <input
-                  name="cbeReceiptLink"
-                  type="url"
-                  inputMode="url"
-                  value={manualReceiptUrl}
-                  placeholder={formText.receiptLinkPlaceholder}
-                  onChange={(event) => handleManualReceiptUrlChange(event.currentTarget.value)}
-                />
               </label>
 
               <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || isRecording}>
