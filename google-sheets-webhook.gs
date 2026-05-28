@@ -8,6 +8,7 @@ const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
+const MAX_RECEIPT_FIELD_LENGTH = 140;
 const REQUEST_HEADERS = [
   "Received At",
   "Submission ID",
@@ -108,10 +109,10 @@ function verifyCbeReceipt(receiptUrl, receivedAt) {
   const text = normalizeReceiptText(response.getContentText());
   const amount = extractAmount(text);
   const paymentDate = extractPaymentDate(text);
-  const receiver = extractField(text, /Receiver:\s*\n?\s*([^\n]+)/i);
-  const receiverAccount = extractField(text, /Receiver:[\s\S]*?Account:\s*\n?\s*([^\n]+)/i);
-  const payer = extractField(text, /Payer:\s*\n?\s*([^\n]+)/i);
-  const reference = extractField(text, /Reference No\.?\s*(?:\(VAT Invoice No\.\))?:\s*\n?\s*([A-Za-z0-9-]+)/i);
+  const receiver = cleanReceiptField(extractField(text, /Receiver:\s*\n?\s*([^\n]+)/i));
+  const receiverAccount = cleanReceiptField(extractField(text, /Receiver:[\s\S]*?Account:\s*\n?\s*([^\n]+)/i));
+  const payer = cleanReceiptField(extractField(text, /Payer:\s*\n?\s*([^\n]+)/i));
+  const reference = cleanReceiptField(extractField(text, /Reference No\.?\s*(?:\(VAT Invoice No\.\))?:\s*\n?\s*([A-Za-z0-9-]+)/i));
 
   if (!amount || amount < BASE_PRICE_BIRR) {
     errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
@@ -169,6 +170,29 @@ function normalizeReceiptText(html) {
 function extractField(text, pattern) {
   const match = text.match(pattern);
   return match ? match[1].trim() : "";
+}
+
+function cleanReceiptField(value) {
+  const cleanValue = cleanCell(value).replace(/\s+/g, " ");
+
+  if (!cleanValue || cleanValue.length > MAX_RECEIPT_FIELD_LENGTH) {
+    return "";
+  }
+
+  if (looksLikeSubmissionJson(cleanValue)) {
+    return "";
+  }
+
+  return cleanValue;
+}
+
+function looksLikeSubmissionJson(value) {
+  const trimmedValue = String(value || "").trim();
+  return (
+    trimmedValue.charAt(0) === "{" &&
+    trimmedValue.indexOf('"cbeReceiptUrl"') !== -1 &&
+    trimmedValue.indexOf('"paymentAmount"') !== -1
+  );
 }
 
 function extractAmount(text) {
@@ -310,7 +334,21 @@ function getSheet(spreadsheet, sheetName) {
 function appendRequestRow(spreadsheet, sheetName, row) {
   const sheet = getSheet(spreadsheet, sheetName);
   ensureRequestHeader(sheet);
-  sheet.appendRow(row);
+  sheet.appendRow(normalizeRequestRow(row));
+}
+
+function normalizeRequestRow(row) {
+  const normalizedRow = row.slice(0, REQUEST_HEADERS.length);
+
+  while (normalizedRow.length < REQUEST_HEADERS.length) {
+    normalizedRow.push("");
+  }
+
+  [9, 10, 11, 12].forEach((index) => {
+    normalizedRow[index] = cleanReceiptField(normalizedRow[index]);
+  });
+
+  return normalizedRow;
 }
 
 function ensureIncomingHeader(sheet) {
