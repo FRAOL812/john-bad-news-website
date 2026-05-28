@@ -479,7 +479,7 @@ const faqItems = [
 
 const pageTranslations = {
   en: {
-    eyebrow: "BAD NEWS",
+    eyebrow: "መርዶ",
     nav: ["Home", "How It Works", "About Us", "Reviews", "FAQ", "Contact"],
     cta: "Send Bad News",
     headline1: "We Deliver",
