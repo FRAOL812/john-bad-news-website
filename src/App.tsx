@@ -504,7 +504,7 @@ const pageTranslations = {
     cta: "መልእክት ላክ",
     headline1: "ለመናገር የሚከብድ መጥፎ ዜናዎትን",
     headline2: "እናደርሳለን",
-    headline3: "እርስዎ ማለት የማይፈልጉትን።",
+    headline3: "",
     intro: "ጆን ባድ ኒውስ አስቸጋሪ መልእክቶችን በምስጢር፣ በሙያዊነት እና በጥንቃቄ ያደርሳል።",
     submit: "ላክ",
     statOne: "በተመሳሳይ ቀን ማድረስ",
