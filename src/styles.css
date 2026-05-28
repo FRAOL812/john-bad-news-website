@@ -605,14 +605,22 @@ label span svg {
 }
 
 .phone-input-group {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(104px, max-content) minmax(0, 1fr);
+  align-items: stretch;
   gap: 8px;
+  width: 100%;
+}
+
+.phone-input-group input {
+  min-width: 0;
 }
 
 .custom-country-select {
   position: relative;
-  display: inline-block;
-  min-width: 94px;
+  display: block;
+  width: 108px;
+  min-width: 0;
 }
 
 .country-select-btn {
@@ -621,6 +629,7 @@ label span svg {
   justify-content: center;
   gap: 8px;
   width: 100%;
+  min-height: 44px;
   height: 100%;
   padding: 0 10px;
   border: 1px solid rgba(226, 21, 36, 0.28);
@@ -650,8 +659,11 @@ label span svg {
   display: flex;
   flex-direction: column;
   width: max-content;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 32px));
   max-height: 240px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #191919;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -682,6 +694,10 @@ label span svg {
   text-align: left;
   cursor: pointer;
   transition: background 120ms ease;
+}
+
+.country-select-option span {
+  white-space: nowrap;
 }
 
 .country-select-option img {
@@ -1329,13 +1345,20 @@ label span svg {
   }
 
   .phone-input-group {
-    flex-direction: column;
-    gap: 6px;
+    grid-template-columns: 106px minmax(0, 1fr);
+    gap: 7px;
   }
 
-  .country-code-select {
+  .custom-country-select {
     width: 100%;
-    min-width: unset;
+  }
+
+  .country-select-btn {
+    padding-inline: 8px;
+  }
+
+  .country-select-dropdown {
+    min-width: min(280px, calc(100vw - 32px));
   }
 
   .site-header {
@@ -1923,6 +1946,14 @@ label span svg {
 }
 
 @media (max-width: 380px) {
+  .phone-input-group {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-country-select {
+    width: 100%;
+  }
+
   .brand {
     gap: 6px;
   }
