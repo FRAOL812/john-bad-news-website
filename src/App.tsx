@@ -668,7 +668,8 @@ export default function App() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSubmissionError("");
 
     if (isReceiptChecking) {
@@ -728,11 +729,16 @@ export default function App() {
       await postSubmissionToSpreadsheet(nextRecord);
 
       setSubmitted(true);
-      event.currentTarget.reset();
+      formElement.reset();
       setReceiptName("");
       setCbeReceiptUrl("");
       setAudioName("");
-    } catch {
+    } catch (error) {
+      console.error("[receipt] Submission failed", {
+        error,
+        receiptFile: nextRecord.receiptFile,
+        cbeReceiptUrl: nextRecord.cbeReceiptUrl,
+      });
       setSubmitted(false);
       setSubmissionError(formText.spreadsheetError);
     } finally {
