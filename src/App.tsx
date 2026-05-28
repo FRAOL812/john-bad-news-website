@@ -42,6 +42,9 @@ type SubmissionRecord = {
   paymentStatus: string;
   cbeReceiptUrl: string;
   audioFile: string;
+  audioMimeType?: string;
+  audioSize?: number;
+  audioDataBase64?: string;
   receiptFile: string;
   language: "en" | "am";
 };
@@ -64,6 +67,7 @@ declare global {
 
 const basePriceBirr = 500;
 const maxReceiptSize = 5 * 1024 * 1024;
+const maxAudioSize = 8 * 1024 * 1024;
 const cbeReceiptBaseUrl = "https://mbreciept.cbe.com.et/";
 const acceptedReceiptTypes = ["image/jpeg", "image/png"];
 const acceptedReceiptExtensions = [".jpg", ".jpeg", ".png"];
@@ -83,6 +87,18 @@ function getCbeReceiptUrl(value: string) {
   const normalizedValue = value.replace(/\s*\.\s*/g, ".").replace(/\s+/g, "");
   const match = normalizedValue.match(/https?:\/\/mbreciept\.cbe\.com\.et\/[A-Za-z0-9-]+/i);
   return match?.[0] ?? "";
+}
+
+function readFileAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("File could not be read."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function hasCanvasQrFallback() {
@@ -353,6 +369,7 @@ const formTranslations = {
     message: "Bad News",
     messagePlaceholder: "Write the bad news you want us to deliver...",
     audioUpload: "Upload Audio(optional)",
+    audioTooLarge: "Audio file must be 8MB or smaller.",
     receiver: "Receiver",
     receiverPlaceholder: "Enter receiver's name or phone number",
     accountNo: "Account No:- 1000239878583",
@@ -388,6 +405,7 @@ const formTranslations = {
     message: "መጥፎ ዜና",
     messagePlaceholder: "እንድናደርስልዎ የሚፈልጉትን መጥፎ ዜና ይጻፉ...",
     audioUpload: "ድምጽ ይስቀሉ (አማራጭ)",
+    audioTooLarge: "የድምጽ ፋይሉ 8MB ወይም ከዚያ በታች መሆን አለበት።",
     receiver: "ተቀባይ",
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     accountNo: "የሂሳብ ቁጥር:- 1000239878583",
@@ -653,8 +671,12 @@ export default function App() {
   const [cbeReceiptUrl, setCbeReceiptUrl] = useState("");
   const [isReceiptChecking, setIsReceiptChecking] = useState(false);
   const [audioName, setAudioName] = useState("");
+  const [audioMimeType, setAudioMimeType] = useState("");
+  const [audioSize, setAudioSize] = useState(0);
+  const [audioDataBase64, setAudioDataBase64] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
+  const [audioError, setAudioError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [language, setLanguage] = useState<"en" | "am">("en");
   const text = pageTranslations[language];
@@ -695,6 +717,11 @@ export default function App() {
       return;
     }
 
+    if (audioError) {
+      setSubmitted(false);
+      return;
+    }
+
     if (!getSpreadsheetWebhookUrl()) {
       setSubmissionError(formText.spreadsheetMissing);
       setSubmitted(false);
@@ -720,6 +747,9 @@ export default function App() {
       paymentStatus: formText.paymentStatusPending,
       cbeReceiptUrl,
       audioFile: audioName || "-",
+      audioMimeType,
+      audioSize,
+      audioDataBase64,
       receiptFile: receiptName,
       language,
     };
@@ -733,6 +763,10 @@ export default function App() {
       setReceiptName("");
       setCbeReceiptUrl("");
       setAudioName("");
+      setAudioMimeType("");
+      setAudioSize(0);
+      setAudioDataBase64("");
+      setAudioError("");
     } catch (error) {
       console.error("[receipt] Submission failed", {
         error,
@@ -855,6 +889,60 @@ export default function App() {
     }
   }
 
+  async function handleAudioChange(event: FormEvent<HTMLInputElement>) {
+    const audioInput = event.currentTarget;
+    const file = audioInput.files?.[0];
+    setSubmitted(false);
+    setSubmissionError("");
+
+    if (!file) {
+      setAudioName("");
+      setAudioMimeType("");
+      setAudioSize(0);
+      setAudioDataBase64("");
+      setAudioError("");
+      return;
+    }
+
+    if (file.size > maxAudioSize) {
+      console.warn("[audio] Rejected oversized audio file", {
+        name: file.name,
+        size: file.size,
+        maxAudioSize,
+      });
+      audioInput.value = "";
+      setAudioName("");
+      setAudioMimeType("");
+      setAudioSize(0);
+      setAudioDataBase64("");
+      setAudioError(formText.audioTooLarge);
+      return;
+    }
+
+    try {
+      const dataBase64 = await readFileAsBase64(file);
+      console.info("[audio] Audio file prepared for spreadsheet webhook", {
+        name: file.name,
+        type: file.type || "audio/*",
+        size: file.size,
+        base64Length: dataBase64.length,
+      });
+      setAudioName(file.name);
+      setAudioMimeType(file.type || "audio/mpeg");
+      setAudioSize(file.size);
+      setAudioDataBase64(dataBase64);
+      setAudioError("");
+    } catch (error) {
+      console.error("[audio] Failed to read audio file", { name: file.name, error });
+      audioInput.value = "";
+      setAudioName("");
+      setAudioMimeType("");
+      setAudioSize(0);
+      setAudioDataBase64("");
+      setAudioError(formText.spreadsheetError);
+    }
+  }
+
   return (
     <div className="bad-news-app">
       <header className="site-header">
@@ -958,10 +1046,10 @@ export default function App() {
                   name="audio"
                   type="file"
                   accept="audio/*"
-                  onChange={(event) => setAudioName(event.currentTarget.files?.[0]?.name ?? "")}
+                  onChange={handleAudioChange}
                 />
                 <span>
-                  <Icon name="upload" /> {audioName || formText.audioUpload}
+                  <Icon name="upload" /> {audioError || audioName || formText.audioUpload}
                 </span>
               </label>
 
@@ -1011,7 +1099,7 @@ export default function App() {
                 </span>
               </label>
 
-              <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || isRecording}>
+              <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || Boolean(audioError) || isRecording}>
                 <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}
               </button>
               {submitted && <output className="form-success">{formText.success}</output>}

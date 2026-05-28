@@ -7,6 +7,7 @@ const PAYMENT_WINDOW_MINUTES = 20;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
+const AUDIO_FOLDER_NAME = "John Bad News Audio";
 const REQUEST_HEADERS = [
   "Received At",
   "Submission ID",
@@ -22,7 +23,7 @@ const REQUEST_HEADERS = [
   "CBE Receiver Account",
   "Reference No",
   "CBE Receipt Link",
-  "Audio File",
+  "Audio Link",
   "Receipt File",
   "Language",
   "Reject Reason",
@@ -33,6 +34,7 @@ function setupAuthorization() {
     muteHttpExceptions: true,
     followRedirects: true,
   });
+  getOrCreateDriveFolder(AUDIO_FOLDER_NAME);
   SpreadsheetApp.getActiveSpreadsheet();
 }
 
@@ -43,7 +45,8 @@ function doPost(event) {
 
   try {
     const data = JSON.parse(rawBody);
-    appendIncoming(spreadsheet, receivedAt, data, rawBody);
+    const audioLink = saveAudioFile(data);
+    appendIncoming(spreadsheet, receivedAt, data, audioLink);
     const verification = verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
 
     if (verification.ok && isDuplicateReference(spreadsheet, verification.reference)) {
@@ -71,7 +74,7 @@ function doPost(event) {
       cleanCell(verification.receiverAccount),
       cleanCell(verification.reference),
       receiptLinkFormula(data.cbeReceiptUrl),
-      cleanCell(data.audioFile),
+      audioLink,
       cleanCell(data.receiptFile),
       cleanCell(data.language),
       "",
@@ -193,12 +196,14 @@ function isDuplicateReference(spreadsheet, reference) {
     return false;
   }
 
-  const referenceColumn = 11;
+  const referenceColumn = 13;
   const references = sheet.getRange(2, referenceColumn, sheet.getLastRow() - 1, 1).getValues().flat();
   return references.some((value) => String(value).trim() === reference);
 }
 
 function appendRejected(spreadsheet, receivedAt, data, verification) {
+  const audioLink = getExistingAudioLink(data);
+
   appendRequestRow(spreadsheet, REJECTED_SHEET_NAME, [
     receivedAt.toLocaleString(),
     cleanCell(data.id),
@@ -214,14 +219,14 @@ function appendRejected(spreadsheet, receivedAt, data, verification) {
     cleanCell(verification.receiverAccount),
     cleanCell(verification.reference),
     receiptLinkFormula(data.cbeReceiptUrl),
-    cleanCell(data.audioFile),
+    audioLink,
     cleanCell(data.receiptFile),
     cleanCell(data.language),
     verification.errors.join(" | "),
   ]);
 }
 
-function appendIncoming(spreadsheet, receivedAt, data, rawBody) {
+function appendIncoming(spreadsheet, receivedAt, data, audioLink) {
   const sheet = getSheet(spreadsheet, INCOMING_SHEET_NAME);
   ensureIncomingHeader(sheet);
   sheet.appendRow([
@@ -239,11 +244,52 @@ function appendIncoming(spreadsheet, receivedAt, data, rawBody) {
     "",
     "",
     receiptLinkFormula(data.cbeReceiptUrl),
-    cleanCell(data.audioFile),
+    audioLink,
     cleanCell(data.receiptFile),
     cleanCell(data.language),
     "",
   ]);
+}
+
+function saveAudioFile(data) {
+  if (!data.audioDataBase64 || !data.audioFile || data.audioFile === "-") {
+    return cleanCell(data.audioFile);
+  }
+
+  try {
+    const folder = getOrCreateDriveFolder(AUDIO_FOLDER_NAME);
+    const safeName = cleanCell(data.audioFile).replace(/[\\/:*?"<>|]/g, "-") || "audio";
+    const submissionId = cleanCell(data.id) || String(Date.now());
+    const fileName = `${submissionId}-${safeName}`;
+    const bytes = Utilities.base64Decode(data.audioDataBase64);
+    const blob = Utilities.newBlob(bytes, cleanCell(data.audioMimeType) || "audio/mpeg", fileName);
+    const file = folder.createFile(blob);
+
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (error) {
+      // Some Workspace policies block link sharing; the owner can still open the file.
+    }
+
+    data.audioDriveUrl = file.getUrl();
+    return `=HYPERLINK("${data.audioDriveUrl}", "${fileName}")`;
+  } catch (error) {
+    data.audioDriveUrl = "";
+    return `Audio save failed: ${String(error && error.message ? error.message : error)}`;
+  }
+}
+
+function getExistingAudioLink(data) {
+  if (data.audioDriveUrl) {
+    return `=HYPERLINK("${data.audioDriveUrl}", "${cleanCell(data.audioFile) || "Open audio"}")`;
+  }
+
+  return cleanCell(data.audioFile);
+}
+
+function getOrCreateDriveFolder(folderName) {
+  const folders = DriveApp.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
 }
 
 function appendWebhookError(spreadsheet, receivedAt, rawBody, error) {
