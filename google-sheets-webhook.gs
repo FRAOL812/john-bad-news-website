@@ -7,6 +7,26 @@ const PAYMENT_WINDOW_MINUTES = 20;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
+const REQUEST_HEADERS = [
+  "Received At",
+  "Submission ID",
+  "Payment Status",
+  "Sender Name",
+  "Sender Phone",
+  "Bad News",
+  "Requested Receiver",
+  "Claimed Amount",
+  "Verified Amount",
+  "CBE Payer",
+  "CBE Receiver",
+  "CBE Receiver Account",
+  "Reference No",
+  "CBE Receipt Link",
+  "Audio File",
+  "Receipt File",
+  "Language",
+  "Reject Reason",
+];
 
 function setupAuthorization() {
   UrlFetchApp.fetch(CBE_RECEIPT_BASE_URL, {
@@ -36,26 +56,25 @@ function doPost(event) {
       return jsonResponse({ ok: false, errors: verification.errors });
     }
 
-    const sheet = getSheet(spreadsheet, VERIFIED_SHEET_NAME);
-    ensureVerifiedHeader(sheet);
-    sheet.appendRow([
+    appendRequestRow(spreadsheet, VERIFIED_SHEET_NAME, [
       receivedAt.toLocaleString(),
-      verification.paymentDate.toLocaleString(),
-      data.name || "",
-      data.phone || "",
-      data.badNews || "",
-      data.receiver || "",
-      verification.payer || "",
-      verification.receiver || "",
-      verification.receiverAccount || "",
-      verification.amount,
-      verification.reference || "",
-      `=HYPERLINK("${data.cbeReceiptUrl}", "Open CBE receipt")`,
+      cleanCell(data.id),
       "Verified",
-      data.audioFile || "",
-      data.receiptFile || "",
-      data.language || "",
-      data.id || "",
+      cleanCell(data.name),
+      cleanCell(data.phone),
+      cleanCell(data.badNews),
+      cleanCell(data.receiver),
+      cleanCell(data.paymentAmount),
+      verification.amount || "",
+      cleanCell(verification.payer),
+      cleanCell(verification.receiver),
+      cleanCell(verification.receiverAccount),
+      cleanCell(verification.reference),
+      receiptLinkFormula(data.cbeReceiptUrl),
+      cleanCell(data.audioFile),
+      cleanCell(data.receiptFile),
+      cleanCell(data.language),
+      "",
     ]);
 
     return jsonResponse({ ok: true, status: "Verified" });
@@ -180,18 +199,25 @@ function isDuplicateReference(spreadsheet, reference) {
 }
 
 function appendRejected(spreadsheet, receivedAt, data, verification) {
-  const sheet = getSheet(spreadsheet, REJECTED_SHEET_NAME);
-  ensureRejectedHeader(sheet);
-  sheet.appendRow([
+  appendRequestRow(spreadsheet, REJECTED_SHEET_NAME, [
     receivedAt.toLocaleString(),
-    data.name || "",
-    data.phone || "",
-    data.receiver || "",
-    data.paymentAmount || "",
-    data.cbeReceiptUrl ? `=HYPERLINK("${data.cbeReceiptUrl}", "Open CBE receipt")` : "",
+    cleanCell(data.id),
+    "Rejected",
+    cleanCell(data.name),
+    cleanCell(data.phone),
+    cleanCell(data.badNews),
+    cleanCell(data.receiver),
+    cleanCell(data.paymentAmount),
+    verification.amount || "",
+    cleanCell(verification.payer),
+    cleanCell(verification.receiver),
+    cleanCell(verification.receiverAccount),
+    cleanCell(verification.reference),
+    receiptLinkFormula(data.cbeReceiptUrl),
+    cleanCell(data.audioFile),
+    cleanCell(data.receiptFile),
+    cleanCell(data.language),
     verification.errors.join(" | "),
-    data.receiptFile || "",
-    data.id || "",
   ]);
 }
 
@@ -200,14 +226,23 @@ function appendIncoming(spreadsheet, receivedAt, data, rawBody) {
   ensureIncomingHeader(sheet);
   sheet.appendRow([
     receivedAt.toLocaleString(),
-    data.id || "",
-    data.name || "",
-    data.phone || "",
-    data.receiver || "",
-    data.paymentAmount || "",
-    data.cbeReceiptUrl ? `=HYPERLINK("${data.cbeReceiptUrl}", "Open CBE receipt")` : "",
-    data.receiptFile || "",
-    data.language || "",
+    cleanCell(data.id),
+    "Incoming",
+    cleanCell(data.name),
+    cleanCell(data.phone),
+    cleanCell(data.badNews),
+    cleanCell(data.receiver),
+    cleanCell(data.paymentAmount),
+    "",
+    "",
+    "",
+    "",
+    "",
+    receiptLinkFormula(data.cbeReceiptUrl),
+    cleanCell(data.audioFile),
+    cleanCell(data.receiptFile),
+    cleanCell(data.language),
+    "",
     rawBody,
   ]);
 }
@@ -227,80 +262,50 @@ function getSheet(spreadsheet, sheetName) {
   return spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
 }
 
-function ensureVerifiedHeader(sheet) {
-  if (sheet.getLastRow() > 0) {
-    return;
-  }
-
-  sheet.appendRow([
-    "Received At",
-    "Payment Date",
-    "Sender Name",
-    "Sender Phone",
-    "Bad News",
-    "Requested Receiver",
-    "CBE Payer",
-    "CBE Receiver",
-    "CBE Receiver Account",
-    "Verified Amount",
-    "Reference No",
-    "CBE Receipt Link",
-    "Payment Status",
-    "Audio File",
-    "Receipt File",
-    "Language",
-    "Submission ID",
-  ]);
-}
-
-function ensureRejectedHeader(sheet) {
-  if (sheet.getLastRow() > 0) {
-    return;
-  }
-
-  sheet.appendRow([
-    "Received At",
-    "Sender Name",
-    "Sender Phone",
-    "Requested Receiver",
-    "Claimed Amount",
-    "CBE Receipt Link",
-    "Reject Reason",
-    "Receipt File",
-    "Submission ID",
-  ]);
+function appendRequestRow(spreadsheet, sheetName, row) {
+  const sheet = getSheet(spreadsheet, sheetName);
+  ensureRequestHeader(sheet);
+  sheet.appendRow(row);
 }
 
 function ensureIncomingHeader(sheet) {
-  if (sheet.getLastRow() > 0) {
-    return;
-  }
+  ensureHeader(sheet, REQUEST_HEADERS.concat(["Raw Body"]));
+}
 
-  sheet.appendRow([
-    "Received At",
-    "Submission ID",
-    "Sender Name",
-    "Sender Phone",
-    "Requested Receiver",
-    "Claimed Amount",
-    "CBE Receipt Link",
-    "Receipt File",
-    "Language",
-    "Raw Body",
-  ]);
+function ensureRequestHeader(sheet) {
+  ensureHeader(sheet, REQUEST_HEADERS);
 }
 
 function ensureErrorHeader(sheet) {
-  if (sheet.getLastRow() > 0) {
-    return;
-  }
-
-  sheet.appendRow([
+  ensureHeader(sheet, [
     "Received At",
     "Error Message",
     "Stack",
     "Raw Body",
   ]);
+}
+
+function ensureHeader(sheet, headers) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  } else {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+  sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), headers.length).setVerticalAlignment("top");
+  sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), headers.length).setWrap(true);
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function cleanCell(value) {
+  return String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+}
+
+function receiptLinkFormula(url) {
+  const cleanUrl = cleanCell(url);
+  return cleanUrl ? `=HYPERLINK("${cleanUrl}", "Open CBE receipt")` : "";
 }
 
 function jsonResponse(payload) {
