@@ -87,8 +87,18 @@ function canScanReceiptQr() {
   return Boolean(window.isSecureContext && window.BarcodeDetector && window.createImageBitmap);
 }
 
+function getReceiptScanDiagnostics() {
+  return {
+    isSecureContext: window.isSecureContext,
+    hasBarcodeDetector: Boolean(window.BarcodeDetector),
+    hasCreateImageBitmap: Boolean(window.createImageBitmap),
+    userAgent: window.navigator.userAgent,
+  };
+}
+
 async function readCbeReceiptUrlFromImage(file: File) {
   if (!canScanReceiptQr() || !window.BarcodeDetector) {
+    console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
     throw new Error("Receipt QR scanning is not available in this browser/context.");
   }
 
@@ -97,6 +107,10 @@ async function readCbeReceiptUrlFromImage(file: File) {
 
   try {
     const codes = await detector.detect(bitmap);
+    console.info(
+      "[receipt] QR scan completed",
+      codes.map((code) => ({ rawValue: code.rawValue, cbeReceiptUrl: getCbeReceiptUrl(code.rawValue) })),
+    );
     return codes.map((code) => getCbeReceiptUrl(code.rawValue)).find(Boolean) ?? "";
   } finally {
     bitmap.close();
@@ -107,8 +121,17 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
   const webhookUrl = getSpreadsheetWebhookUrl();
 
   if (!webhookUrl) {
+    console.error("[receipt] Spreadsheet webhook URL is missing");
     throw new Error("Spreadsheet webhook URL is not configured.");
   }
+
+  console.info("[receipt] Sending submission to spreadsheet webhook", {
+    webhookConfigured: Boolean(webhookUrl),
+    receiptFile: record.receiptFile,
+    cbeReceiptUrl: record.cbeReceiptUrl,
+    paymentAmount: record.paymentAmount,
+    language: record.language,
+  });
 
   await fetch(webhookUrl, {
     method: "POST",
@@ -118,6 +141,8 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
     },
     body: JSON.stringify(record),
   });
+
+  console.info("[receipt] Submission request sent. Response cannot be inspected because fetch uses no-cors mode.");
 }
 
 const features: Feature[] = [
@@ -248,7 +273,7 @@ const formTranslations = {
     receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a CBE screenshot with the QR/payment link visible.",
     receiptTooLarge: "Receipt must be 5MB or smaller.",
     receiptQrMissing: "No CBE payment link was found. Upload a clear screenshot that includes the QR code/payment link.",
-    receiptQrUnsupported: "Automatic receipt scanning needs HTTPS or localhost in Chrome/Edge. Open the deployed HTTPS site, then upload a clear CBE screenshot.",
+    receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the CBE screenshot again.",
     success: "Your receipt was sent for automatic CBE verification. Verified requests appear in the live sheet.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
     spreadsheetError: "We could not record this request live. Please try again.",
@@ -283,7 +308,7 @@ const formTranslations = {
     receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። QR/payment link የሚታይበት የCBE ስክሪንሾት ይስቀሉ።",
     receiptTooLarge: "ደረሰኙ 5MB ወይም ከዚያ በታች መሆን አለበት።",
     receiptQrMissing: "የCBE payment link አልተገኘም። QR code/payment link የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
-    receiptQrUnsupported: "ራስ-ሰር የደረሰኝ መቃኘት HTTPS ወይም localhost በChrome/Edge ይፈልጋል። የተዘረጋውን HTTPS ድህረገጽ ይክፈቱ።",
+    receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደገፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የCBE ስክሪንሾቱን እንደገና ይስቀሉ።",
     success: "ደረሰኝዎ ለCBE ራስ-ሰር ማረጋገጫ ተልኳል። የተረጋገጡ ጥያቄዎች በቀጥታ ሰንጠረዡ ውስጥ ይታያሉ።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
     spreadsheetError: "ጥያቄውን በቀጥታ መመዝገብ አልቻልንም። እባክዎ ደግመው ይሞክሩ።",
@@ -624,12 +649,21 @@ export default function App() {
     setIsReceiptChecking(false);
 
     if (!file) {
+      console.info("[receipt] Receipt selection cleared");
       setReceiptName("");
       setReceiptError("");
       return;
     }
 
+    console.info("[receipt] Receipt file selected", {
+      name: file.name,
+      type: file.type || "(empty MIME type)",
+      size: file.size,
+      diagnostics: getReceiptScanDiagnostics(),
+    });
+
     if (!canScanReceiptQr()) {
+      console.warn("[receipt] Receipt scan blocked by browser capability/context", getReceiptScanDiagnostics());
       event.currentTarget.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
@@ -643,6 +677,7 @@ export default function App() {
     const hasAcceptedType = acceptedReceiptTypes.includes(file.type);
 
     if (isPdf) {
+      console.warn("[receipt] Rejected PDF receipt", { name: file.name, type: file.type });
       event.currentTarget.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
@@ -651,6 +686,12 @@ export default function App() {
     }
 
     if (!hasAcceptedType && !hasAcceptedExtension) {
+      console.warn("[receipt] Rejected unsupported receipt file type", {
+        name: file.name,
+        type: file.type || "(empty MIME type)",
+        hasAcceptedExtension,
+        hasAcceptedType,
+      });
       event.currentTarget.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
@@ -659,6 +700,11 @@ export default function App() {
     }
 
     if (file.size > maxReceiptSize) {
+      console.warn("[receipt] Rejected oversized receipt file", {
+        name: file.name,
+        size: file.size,
+        maxReceiptSize,
+      });
       event.currentTarget.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
@@ -673,6 +719,11 @@ export default function App() {
       const extractedUrl = await readCbeReceiptUrlFromImage(file);
 
       if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
+        console.warn("[receipt] No CBE receipt URL found in QR scan", {
+          name: file.name,
+          extractedUrl,
+          expectedBaseUrl: cbeReceiptBaseUrl,
+        });
         event.currentTarget.value = "";
         setReceiptName("");
         setCbeReceiptUrl("");
@@ -680,14 +731,23 @@ export default function App() {
         return;
       }
 
+      console.info("[receipt] CBE receipt URL accepted", {
+        name: file.name,
+        cbeReceiptUrl: extractedUrl,
+      });
       setReceiptName(file.name);
       setCbeReceiptUrl(extractedUrl);
       setReceiptError("");
-    } catch {
+    } catch (error) {
+      console.error("[receipt] Failed while scanning receipt image", {
+        name: file.name,
+        error,
+        diagnostics: getReceiptScanDiagnostics(),
+      });
       event.currentTarget.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
-      setReceiptError(formText.receiptQrUnsupported);
+      setReceiptError(formText.receiptQrMissing);
     } finally {
       setIsReceiptChecking(false);
     }
