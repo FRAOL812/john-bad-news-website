@@ -701,6 +701,26 @@ label span svg {
   color: #ffd88d;
 }
 
+.upload-progress {
+  position: relative;
+  display: block;
+  width: min(220px, 100%);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 216, 141, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 216, 141, 0.14);
+}
+
+.upload-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 44%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffbf47, #fff0b8, #ffbf47);
+  animation: receipt-upload-progress 1s ease-in-out infinite;
+}
+
 .upload-box.is-error {
   border-color: rgba(255, 88, 88, 0.9);
   background:
@@ -729,6 +749,16 @@ label span svg {
   50% {
     opacity: 1;
     transform: translateY(-2px);
+  }
+}
+
+@keyframes receipt-upload-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(230%);
   }
 }
 

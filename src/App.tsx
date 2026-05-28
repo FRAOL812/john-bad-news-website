@@ -841,6 +841,11 @@ export default function App() {
                   <small id="receipt-status">
                     {isReceiptChecking ? formText.receiptChecking : receiptError || (receiptName ? formText.receiptReady : formText.receiptHelp)}
                   </small>
+                  {isReceiptChecking && (
+                    <span className="upload-progress" role="progressbar" aria-label={formText.receiptChecking}>
+                      <span />
+                    </span>
+                  )}
                 </span>
               </label>
 
