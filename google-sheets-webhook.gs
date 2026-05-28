@@ -13,6 +13,7 @@ const REQUEST_HEADERS = [
   "Received At",
   "Submission ID",
   "Payment Status",
+  "Done News",
   "Sender Name",
   "Sender Phone",
   "Bad News",
@@ -64,6 +65,7 @@ function doPost(event) {
       receivedAt.toLocaleString(),
       cleanCell(data.id),
       "Verified",
+      false,
       cleanCell(data.name),
       cleanCell(data.phone),
       cleanCell(data.badNews),
@@ -220,7 +222,7 @@ function isDuplicateReference(spreadsheet, reference) {
     return false;
   }
 
-  const referenceColumn = 13;
+  const referenceColumn = REQUEST_HEADERS.indexOf("Reference No") + 1;
   const references = sheet.getRange(2, referenceColumn, sheet.getLastRow() - 1, 1).getValues().flat();
   return references.some((value) => String(value).trim() === reference);
 }
@@ -232,6 +234,7 @@ function appendRejected(spreadsheet, receivedAt, data, verification) {
     receivedAt.toLocaleString(),
     cleanCell(data.id),
     "Rejected",
+    false,
     cleanCell(data.name),
     cleanCell(data.phone),
     cleanCell(data.badNews),
@@ -257,6 +260,7 @@ function appendIncoming(spreadsheet, receivedAt, data, audioLink) {
     receivedAt.toLocaleString(),
     cleanCell(data.id),
     "Incoming",
+    false,
     cleanCell(data.name),
     cleanCell(data.phone),
     cleanCell(data.badNews),
@@ -344,7 +348,7 @@ function normalizeRequestRow(row) {
     normalizedRow.push("");
   }
 
-  [9, 10, 11, 12].forEach((index) => {
+  [10, 11, 12, 13].forEach((index) => {
     normalizedRow[index] = cleanReceiptField(normalizedRow[index]);
   });
 
@@ -372,6 +376,7 @@ function ensureHeader(sheet, headers) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
   } else {
+    ensureDoneNewsColumn(sheet, headers);
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
 
@@ -379,7 +384,40 @@ function ensureHeader(sheet, headers) {
   sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
   sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), headers.length).setVerticalAlignment("top");
   sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), headers.length).setWrap(true);
+  ensureDoneNewsCheckboxes(sheet, headers);
   sheet.autoResizeColumns(1, headers.length);
+}
+
+function ensureDoneNewsColumn(sheet, headers) {
+  const doneNewsIndex = headers.indexOf("Done News");
+
+  if (doneNewsIndex === -1 || sheet.getLastColumn() === 0) {
+    return;
+  }
+
+  const existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(cleanCell);
+
+  if (existingHeaders.indexOf("Done News") !== -1) {
+    return;
+  }
+
+  const previousHeader = headers[doneNewsIndex - 1];
+  const previousHeaderColumn = existingHeaders.indexOf(previousHeader) + 1;
+
+  if (previousHeaderColumn > 0) {
+    sheet.insertColumnAfter(previousHeaderColumn);
+  }
+}
+
+function ensureDoneNewsCheckboxes(sheet, headers) {
+  const doneNewsColumn = headers.indexOf("Done News") + 1;
+
+  if (!doneNewsColumn) {
+    return;
+  }
+
+  const rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  sheet.getRange(2, doneNewsColumn, rowCount, 1).insertCheckboxes();
 }
 
 function cleanCell(value) {
