@@ -1947,7 +1947,8 @@ label span svg {
 
 @media (max-width: 380px) {
   .phone-input-group {
-    grid-template-columns: 1fr;
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 6px;
   }
 
   .custom-country-select {
