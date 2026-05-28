@@ -298,7 +298,6 @@ const features: Feature[] = [
   { icon: "hat", title: "100% Confidential", copy: "Your privacy is our priority." },
   { icon: "bolt", title: "Fast & Reliable", copy: "We deliver on time, every time." },
   { icon: "shield", title: "Professional Delivery", copy: "Handled with care and respect." },
-  { icon: "users", title: "All Channels", copy: "Call, voice, message or in-person." },
 ];
 
 const steps: Step[] = [
@@ -357,13 +356,11 @@ const featureTranslations = {
     { title: "100% Confidential", copy: "Your privacy is our priority." },
     { title: "Fast & Reliable", copy: "We deliver on time, every time." },
     { title: "Professional Delivery", copy: "Handled with care and respect." },
-    { title: "All Channels", copy: "Call, voice, message or in-person." },
   ],
   am: [
     { title: "100% ምስጢራዊ", copy: "ግላዊነትዎ ዋና ቅድሚያችን ነው።" },
     { title: "ፈጣን እና አስተማማኝ", copy: "ሁልጊዜ በጊዜው እናደርሳለን።" },
     { title: "ሙያዊ ማድረስ", copy: "በጥንቃቄ እና በክብር ይከናወናል።" },
-    { title: "ሁሉም መንገዶች", copy: "በስልክ፣ በድምጽ፣ በመልእክት ወይም በአካል።" },
   ],
 };
 
@@ -495,9 +492,6 @@ const pageTranslations = {
     headline3: "You Don't Want To Say.",
     intro: "John Bad News delivers your difficult messages with discretion, professionalism, and impact.",
     submit: "Submit",
-    statOne: "Same-day delivery",
-    statTwo: "Private by default",
-    statThree: "Any channel",
     faqTitle: "Questions Before You Send?",
     faqIntro: "A few details people usually want to know before handing us the hard conversation.",
     footerCopy: "We deliver the bad news you don't want to say, so you can focus on what matters.",
@@ -515,9 +509,6 @@ const pageTranslations = {
     headline3: "",
     intro: "ጆን ባድ ኒውስ አስቸጋሪ መልእክቶችን በምስጢር፣ በሙያዊነት እና በጥንቃቄ ያደርሳል።",
     submit: "ላክ",
-    statOne: "በተመሳሳይ ቀን ማድረስ",
-    statTwo: "ምስጢር በመጀመሪያ",
-    statThree: "በማንኛውም መንገድ",
     faqTitle: "ከመላክዎ በፊት ጥያቄ አለዎት?",
     faqIntro: "አስቸጋሪ መልእክትን ከመላክ በፊት ብዙ ሰዎች የሚጠይቁት መረጃ።",
     footerCopy: "እርስዎ ማለት የማይፈልጉትን መጥፎ ዜና እናደርሳለን፣ እርስዎም አስፈላጊው ላይ ያተኩሩ።",
@@ -1059,11 +1050,6 @@ export default function App() {
                 <small>{text.headline3}</small>
               </h1>
               <p>{text.intro}</p>
-              <div className="hero-stats" aria-label="Service highlights">
-                <span>{text.statOne}</span>
-                <span>{text.statTwo}</span>
-                <span>{text.statThree}</span>
-              </div>
             </div>
 
             <div className="feature-grid" aria-label="Service promises">
