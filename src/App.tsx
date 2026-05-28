@@ -1,5 +1,4 @@
-﻿import { FormEvent, useState } from "react";
-import jsQR from "jsqr";
+import { FormEvent, useState } from "react";
 
 type IconName =
   | "shield"
@@ -67,10 +66,33 @@ declare global {
 
 const basePriceBirr = 500;
 const maxReceiptSize = 5 * 1024 * 1024;
-const maxAudioSize = 8 * 1024 * 1024;
+const maxAudioSize = 3 * 1024 * 1024;
 const cbeReceiptBaseUrl = "https://mbreciept.cbe.com.et/";
 const acceptedReceiptTypes = ["image/jpeg", "image/png"];
 const acceptedReceiptExtensions = [".jpg", ".jpeg", ".png"];
+
+const countryCodes = [
+  { code: "+251", name: "Ethiopia", flag: "🇪🇹", iso: "et", placeholder: "e.g. 911 234 567" },
+  { code: "+1", name: "USA/Canada", flag: "🇺🇸", iso: "us", placeholder: "e.g. 555 123 4567" },
+  { code: "+44", name: "UK", flag: "🇬🇧", iso: "gb", placeholder: "e.g. 7700 900077" },
+  { code: "+91", name: "India", flag: "🇮🇳", iso: "in", placeholder: "e.g. 98765 43210" },
+  { code: "+86", name: "China", flag: "🇨🇳", iso: "cn", placeholder: "e.g. 131 2345 6789" },
+  { code: "+81", name: "Japan", flag: "🇯🇵", iso: "jp", placeholder: "e.g. 090 1234 5678" },
+  { code: "+49", name: "Germany", flag: "🇩🇪", iso: "de", placeholder: "e.g. 151 23456789" },
+  { code: "+33", name: "France", flag: "🇫🇷", iso: "fr", placeholder: "e.g. 6 12 34 56 78" },
+  { code: "+39", name: "Italy", flag: "🇮🇹", iso: "it", placeholder: "e.g. 312 345 6789" },
+  { code: "+34", name: "Spain", flag: "🇪🇸", iso: "es", placeholder: "e.g. 612 345 678" },
+  { code: "+55", name: "Brazil", flag: "🇧🇷", iso: "br", placeholder: "e.g. 11 91234 5678" },
+  { code: "+61", name: "Australia", flag: "🇦🇺", iso: "au", placeholder: "e.g. 412 345 678" },
+  { code: "+971", name: "UAE", flag: "🇦🇪", iso: "ae", placeholder: "e.g. 50 123 4567" },
+  { code: "+966", name: "Saudi Arabia", flag: "🇸🇦", iso: "sa", placeholder: "e.g. 51 234 5678" },
+  { code: "+27", name: "South Africa", flag: "🇿🇦", iso: "za", placeholder: "e.g. 71 234 5678" },
+  { code: "+234", name: "Nigeria", flag: "🇳🇬", iso: "ng", placeholder: "e.g. 801 234 5678" },
+  { code: "+254", name: "Kenya", flag: "🇰🇪", iso: "ke", placeholder: "e.g. 712 345678" },
+  { code: "+256", name: "Uganda", flag: "🇺🇬", iso: "ug", placeholder: "e.g. 701 234567" },
+  { code: "+250", name: "Rwanda", flag: "🇷🇼", iso: "rw", placeholder: "e.g. 781 234567" },
+  { code: "+20", name: "Egypt", flag: "🇪🇬", iso: "eg", placeholder: "e.g. 101 234 5678" },
+];
 
 const socialLinks: { name: PlatformName; label: string; href: string }[] = [
   { name: "facebook", label: "Facebook", href: "#contact" },
@@ -141,6 +163,7 @@ async function readReceiptUrlWithBarcodeDetector(file: File) {
 }
 
 async function readReceiptUrlWithJsQr(file: File) {
+  const { default: jsQR } = await import("jsqr");
   const imageUrl = URL.createObjectURL(file);
   const image = new Image();
 
@@ -248,16 +271,19 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
     language: record.language,
   });
 
-  await fetch(webhookUrl, {
+  const response = await fetch(webhookUrl, {
     method: "POST",
-    mode: "no-cors",
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
     body: JSON.stringify(record),
   });
 
-  console.info("[receipt] Submission request sent. Response cannot be inspected because fetch uses no-cors mode.");
+  if (!response.ok) {
+    throw new Error(`Server responded with ${response.status}`);
+  }
+
+  console.info("[receipt] Submission request sent and acknowledged by server.");
 }
 
 const features: Feature[] = [
@@ -369,7 +395,7 @@ const formTranslations = {
     message: "Bad News",
     messagePlaceholder: "Write the bad news you want us to deliver...",
     audioUpload: "Upload Audio(optional)",
-    audioTooLarge: "Audio file must be 8MB or smaller.",
+    audioTooLarge: "Audio file must be 3MB or smaller.",
     receiver: "Receiver",
     receiverPlaceholder: "Enter receiver's name or phone number",
     accountNo: "Account No:- 1000239878583",
@@ -405,7 +431,7 @@ const formTranslations = {
     message: "መጥፎ ዜና",
     messagePlaceholder: "እንድናደርስልዎ የሚፈልጉትን መጥፎ ዜና ይጻፉ...",
     audioUpload: "ድምጽ ይስቀሉ (አማራጭ)",
-    audioTooLarge: "የድምጽ ፋይሉ 8MB ወይም ከዚያ በታች መሆን አለበት።",
+    audioTooLarge: "የድምጽ ፋይሉ 3MB ወይም ከዚያ በታች መሆን አለበት።",
     receiver: "ተቀባይ",
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     accountNo: "የሂሳብ ቁጥር:- 1000239878583",
@@ -665,6 +691,37 @@ function PlatformIcon({ name }: { name: PlatformName }) {
   }
 }
 
+function CountrySelect({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selected = countryCodes.find((c) => c.code === value) || countryCodes[0];
+
+  return (
+    <div className="custom-country-select" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsOpen(false); }}>
+      <button type="button" className="country-select-btn" onClick={() => setIsOpen(!isOpen)} aria-haspopup="listbox" aria-expanded={isOpen} title={`${selected.name} (${selected.code})`}>
+        <img src={`https://flagcdn.com/w20/${selected.iso}.png`} alt={selected.name} width="20" />
+        <span className="country-select-code">{selected.code}</span>
+      </button>
+      {isOpen && (
+        <div className="country-select-dropdown" role="listbox">
+          {countryCodes.map((c) => (
+            <button
+              type="button"
+              key={c.code}
+              role="option"
+              aria-selected={value === c.code}
+              className={`country-select-option ${value === c.code ? 'is-selected' : ''}`}
+              onClick={() => { onChange(c.code); setIsOpen(false); }}
+            >
+              <img src={`https://flagcdn.com/w20/${c.iso}.png`} alt={c.name} width="20" />
+              <span>{c.name} ({c.code})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [receiptName, setReceiptName] = useState("");
   const [receiptError, setReceiptError] = useState("");
@@ -679,6 +736,8 @@ export default function App() {
   const [audioError, setAudioError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [language, setLanguage] = useState<"en" | "am">("en");
+  const [selectedCountryCode, setSelectedCountryCode] = useState("+251");
+  const [receiverCountryCode, setReceiverCountryCode] = useState("+251");
   const text = pageTranslations[language];
   const featureText = featureTranslations[language];
   const stepText = stepTranslations[language];
@@ -713,11 +772,13 @@ export default function App() {
     }
 
     if (receiptError) {
+      setSubmissionError(receiptError);
       setSubmitted(false);
       return;
     }
 
     if (audioError) {
+      setSubmissionError(audioError);
       setSubmitted(false);
       return;
     }
@@ -740,9 +801,9 @@ export default function App() {
       id: `${Date.now()}`,
       receivedAt: new Date().toLocaleString(),
       name: String(form.get("name") ?? ""),
-      phone: String(form.get("phone") ?? ""),
+      phone: `${selectedCountryCode}${String(form.get("phone") ?? "")}`,
       badNews: String(form.get("badNews") ?? ""),
-      receiver: String(form.get("receiver") ?? ""),
+      receiver: `${receiverCountryCode}${String(form.get("receiver") ?? "")}`,
       paymentAmount: `${paymentAmount}`,
       paymentStatus: formText.paymentStatusPending,
       cbeReceiptUrl,
@@ -786,6 +847,12 @@ export default function App() {
     setSubmitted(false);
     setSubmissionError("");
     setCbeReceiptUrl("");
+
+    if (isReceiptChecking) {
+      console.warn("[receipt] Receipt change ignored while scanning is in progress");
+      return;
+    }
+
     setIsReceiptChecking(false);
 
     if (!file) {
@@ -1031,7 +1098,20 @@ export default function App() {
                 <span>
                   <Icon name="phone" /> {formText.phone}
                 </span>
-                <input name="phone" type="tel" defaultValue="+251" pattern="[+]?[0-9 ]{9,16}" required />
+                <div className="phone-input-group">
+                  <CountrySelect
+                    value={selectedCountryCode}
+                    onChange={setSelectedCountryCode}
+                  />
+                  <input
+                    name="phone"
+                    type="tel"
+                    placeholder={countryCodes.find((c) => c.code === selectedCountryCode)?.placeholder || "e.g. 123 456 7890"}
+                    pattern="[0-9\s\-\(\)]{7,15}"
+                    required
+                    style={{ flex: 1 }}
+                  />
+                </div>
               </label>
 
               <label>
@@ -1057,7 +1137,20 @@ export default function App() {
                 <span>
                   <Icon name="user" /> {formText.receiver}
                 </span>
-                <input name="receiver" type="text" placeholder={formText.receiverPlaceholder} required />
+                <div className="phone-input-group">
+                  <CountrySelect
+                    value={receiverCountryCode}
+                    onChange={setReceiverCountryCode}
+                  />
+                  <input
+                    name="receiver"
+                    type="tel"
+                    placeholder={countryCodes.find((c) => c.code === receiverCountryCode)?.placeholder || "e.g. 123 456 7890"}
+                    pattern="[0-9\s\-\(\)]{7,15}"
+                    required
+                    style={{ flex: 1 }}
+                  />
+                </div>
               </label>
 
               <div className="account-box">
@@ -1084,6 +1177,7 @@ export default function App() {
                   required
                   aria-describedby="receipt-status"
                   onChange={handleReceiptChange}
+                  disabled={isReceiptChecking}
                 />
                 <span className={`upload-box ${isReceiptChecking ? "is-uploading" : receiptError ? "is-error" : cbeReceiptUrl ? "is-valid" : ""}`}>
                   <Icon name="upload" />

@@ -604,6 +604,102 @@ label span svg {
   color: #8c8c8c;
 }
 
+.phone-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.custom-country-select {
+  position: relative;
+  display: inline-block;
+  min-width: 94px;
+}
+
+.country-select-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  border: 1px solid rgba(226, 21, 36, 0.28);
+  border-radius: 7px;
+  background: rgba(18, 18, 18, 0.94);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.country-select-btn:focus {
+  border-color: rgba(255, 52, 67, 0.76);
+  background: rgba(24, 24, 24, 0.96);
+  box-shadow: 0 0 0 3px rgba(226, 21, 36, 0.16);
+}
+
+.country-select-btn img {
+  border-radius: 2px;
+  display: block;
+}
+
+.country-select-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #191919;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 6px 0;
+}
+
+.country-select-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.country-select-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+}
+
+.country-select-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.country-select-option img {
+  border-radius: 2px;
+  display: block;
+}
+
+.country-select-option:hover,
+.country-select-option:focus {
+  background: rgba(226, 21, 36, 0.15);
+  outline: none;
+}
+
+.country-select-option.is-selected {
+  background: rgba(226, 21, 36, 0.25);
+  color: #ff3443;
+}
+
 .file-inline {
   justify-self: end;
 }
@@ -1230,6 +1326,16 @@ label span svg {
   body::before {
     background-position: 48% top;
     filter: saturate(0.92) brightness(0.28);
+  }
+
+  .phone-input-group {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .country-code-select {
+    width: 100%;
+    min-width: unset;
   }
 
   .site-header {
