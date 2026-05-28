@@ -1,4 +1,5 @@
 ﻿import { FormEvent, useState } from "react";
+import jsQR from "jsqr";
 
 type IconName =
   | "shield"
@@ -83,38 +84,96 @@ function getCbeReceiptUrl(value: string) {
   return match?.[0] ?? "";
 }
 
+function hasCanvasQrFallback() {
+  return Boolean(document.createElement("canvas").getContext("2d"));
+}
+
 function canScanReceiptQr() {
-  return Boolean(window.isSecureContext && window.BarcodeDetector && window.createImageBitmap);
+  return Boolean((window.BarcodeDetector && "createImageBitmap" in window) || hasCanvasQrFallback());
 }
 
 function getReceiptScanDiagnostics() {
   return {
     isSecureContext: window.isSecureContext,
     hasBarcodeDetector: Boolean(window.BarcodeDetector),
-    hasCreateImageBitmap: Boolean(window.createImageBitmap),
+    hasCreateImageBitmap: "createImageBitmap" in window,
+    hasCanvas2d: hasCanvasQrFallback(),
     userAgent: window.navigator.userAgent,
   };
 }
 
-async function readCbeReceiptUrlFromImage(file: File) {
-  if (!canScanReceiptQr() || !window.BarcodeDetector) {
-    console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
-    throw new Error("Receipt QR scanning is not available in this browser/context.");
+async function readReceiptUrlWithBarcodeDetector(file: File) {
+  const BarcodeDetector = window.BarcodeDetector;
+  if (!BarcodeDetector) {
+    throw new Error("Native BarcodeDetector is not available.");
   }
 
-  const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+  const detector = new BarcodeDetector({ formats: ["qr_code"] });
   const bitmap = await createImageBitmap(file);
 
   try {
     const codes = await detector.detect(bitmap);
     console.info(
-      "[receipt] QR scan completed",
+      "[receipt] Native QR scan completed",
       codes.map((code) => ({ rawValue: code.rawValue, cbeReceiptUrl: getCbeReceiptUrl(code.rawValue) })),
     );
     return codes.map((code) => getCbeReceiptUrl(code.rawValue)).find(Boolean) ?? "";
   } finally {
     bitmap.close();
   }
+}
+
+async function readReceiptUrlWithJsQr(file: File) {
+  const imageUrl = URL.createObjectURL(file);
+  const image = new Image();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Receipt image could not be loaded for QR scanning."));
+      image.src = imageUrl;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context || !canvas.width || !canvas.height) {
+      throw new Error("Canvas QR scanner is not available.");
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    const rawValue = code?.data ?? "";
+
+    console.info("[receipt] jsQR scan completed", {
+      rawValue,
+      cbeReceiptUrl: getCbeReceiptUrl(rawValue),
+      imageWidth: canvas.width,
+      imageHeight: canvas.height,
+    });
+
+    return getCbeReceiptUrl(rawValue);
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+async function readCbeReceiptUrlFromImage(file: File) {
+  if (!canScanReceiptQr()) {
+    console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
+    throw new Error("Receipt QR scanning is not available in this browser/context.");
+  }
+
+  if (window.BarcodeDetector && "createImageBitmap" in window) {
+    console.info("[receipt] Using native BarcodeDetector scanner");
+    return readReceiptUrlWithBarcodeDetector(file);
+  }
+
+  console.info("[receipt] Using jsQR fallback scanner");
+  return readReceiptUrlWithJsQr(file);
 }
 
 async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
