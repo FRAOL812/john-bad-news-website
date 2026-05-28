@@ -1,5 +1,7 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const REJECTED_SHEET_NAME = "Rejected Payments";
+const INCOMING_SHEET_NAME = "Incoming Requests";
+const ERROR_SHEET_NAME = "Webhook Errors";
 const BASE_PRICE_BIRR = 500;
 const PAYMENT_WINDOW_MINUTES = 20;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
@@ -16,43 +18,51 @@ function setupAuthorization() {
 
 function doPost(event) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const data = JSON.parse(event.postData.contents || "{}");
   const receivedAt = new Date();
-  const verification = verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
+  const rawBody = event && event.postData ? event.postData.contents || "{}" : "{}";
 
-  if (verification.ok && isDuplicateReference(spreadsheet, verification.reference)) {
-    verification.ok = false;
-    verification.errors.push("Reference number has already been used");
+  try {
+    const data = JSON.parse(rawBody);
+    appendIncoming(spreadsheet, receivedAt, data, rawBody);
+    const verification = verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
+
+    if (verification.ok && isDuplicateReference(spreadsheet, verification.reference)) {
+      verification.ok = false;
+      verification.errors.push("Reference number has already been used");
+    }
+
+    if (!verification.ok) {
+      appendRejected(spreadsheet, receivedAt, data, verification);
+      return jsonResponse({ ok: false, errors: verification.errors });
+    }
+
+    const sheet = getSheet(spreadsheet, VERIFIED_SHEET_NAME);
+    ensureVerifiedHeader(sheet);
+    sheet.appendRow([
+      receivedAt.toLocaleString(),
+      verification.paymentDate.toLocaleString(),
+      data.name || "",
+      data.phone || "",
+      data.badNews || "",
+      data.receiver || "",
+      verification.payer || "",
+      verification.receiver || "",
+      verification.receiverAccount || "",
+      verification.amount,
+      verification.reference || "",
+      `=HYPERLINK("${data.cbeReceiptUrl}", "Open CBE receipt")`,
+      "Verified",
+      data.audioFile || "",
+      data.receiptFile || "",
+      data.language || "",
+      data.id || "",
+    ]);
+
+    return jsonResponse({ ok: true, status: "Verified" });
+  } catch (error) {
+    appendWebhookError(spreadsheet, receivedAt, rawBody, error);
+    return jsonResponse({ ok: false, errors: [String(error && error.message ? error.message : error)] });
   }
-
-  if (!verification.ok) {
-    appendRejected(spreadsheet, receivedAt, data, verification);
-    return jsonResponse({ ok: false, errors: verification.errors });
-  }
-
-  const sheet = getSheet(spreadsheet, VERIFIED_SHEET_NAME);
-  ensureVerifiedHeader(sheet);
-  sheet.appendRow([
-    receivedAt.toLocaleString(),
-    verification.paymentDate.toLocaleString(),
-    data.name || "",
-    data.phone || "",
-    data.badNews || "",
-    data.receiver || "",
-    verification.payer || "",
-    verification.receiver || "",
-    verification.receiverAccount || "",
-    verification.amount,
-    verification.reference || "",
-    `=HYPERLINK("${data.cbeReceiptUrl}", "Open CBE receipt")`,
-    "Verified",
-    data.audioFile || "",
-    data.receiptFile || "",
-    data.language || "",
-    data.id || "",
-  ]);
-
-  return jsonResponse({ ok: true, status: "Verified" });
 }
 
 function verifyCbeReceipt(receiptUrl, receivedAt) {
@@ -185,6 +195,34 @@ function appendRejected(spreadsheet, receivedAt, data, verification) {
   ]);
 }
 
+function appendIncoming(spreadsheet, receivedAt, data, rawBody) {
+  const sheet = getSheet(spreadsheet, INCOMING_SHEET_NAME);
+  ensureIncomingHeader(sheet);
+  sheet.appendRow([
+    receivedAt.toLocaleString(),
+    data.id || "",
+    data.name || "",
+    data.phone || "",
+    data.receiver || "",
+    data.paymentAmount || "",
+    data.cbeReceiptUrl ? `=HYPERLINK("${data.cbeReceiptUrl}", "Open CBE receipt")` : "",
+    data.receiptFile || "",
+    data.language || "",
+    rawBody,
+  ]);
+}
+
+function appendWebhookError(spreadsheet, receivedAt, rawBody, error) {
+  const sheet = getSheet(spreadsheet, ERROR_SHEET_NAME);
+  ensureErrorHeader(sheet);
+  sheet.appendRow([
+    receivedAt.toLocaleString(),
+    String(error && error.message ? error.message : error),
+    String(error && error.stack ? error.stack : ""),
+    rawBody,
+  ]);
+}
+
 function getSheet(spreadsheet, sheetName) {
   return spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
 }
@@ -230,6 +268,38 @@ function ensureRejectedHeader(sheet) {
     "Reject Reason",
     "Receipt File",
     "Submission ID",
+  ]);
+}
+
+function ensureIncomingHeader(sheet) {
+  if (sheet.getLastRow() > 0) {
+    return;
+  }
+
+  sheet.appendRow([
+    "Received At",
+    "Submission ID",
+    "Sender Name",
+    "Sender Phone",
+    "Requested Receiver",
+    "Claimed Amount",
+    "CBE Receipt Link",
+    "Receipt File",
+    "Language",
+    "Raw Body",
+  ]);
+}
+
+function ensureErrorHeader(sheet) {
+  if (sheet.getLastRow() > 0) {
+    return;
+  }
+
+  sheet.appendRow([
+    "Received At",
+    "Error Message",
+    "Stack",
+    "Raw Body",
   ]);
 }
 
