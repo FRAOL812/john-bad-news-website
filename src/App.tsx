@@ -283,6 +283,14 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
     throw new Error(`Server responded with ${response.status}`);
   }
 
+  const responseText = await response.text();
+  const result = responseText ? JSON.parse(responseText) : { ok: true };
+
+  if (result && result.ok === false) {
+    const errors = Array.isArray(result.errors) ? result.errors.join(" ") : "";
+    throw new Error(errors || "Invalid receipt.");
+  }
+
   console.info("[receipt] Submission request sent and acknowledged by server.");
 }
 
@@ -414,11 +422,11 @@ const formTranslations = {
     receiptInvalidType: "Upload a JPG or PNG CBE receipt screenshot only.",
     receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a CBE screenshot with the QR/payment link visible.",
     receiptTooLarge: "Receipt must be 5MB or smaller.",
-    receiptQrMissing: "No CBE receipt link was found. Upload a clear screenshot that shows the QR code or receipt link.",
+    receiptQrMissing: "Invalid receipt. Upload a valid CBE screenshot with a visible QR code or receipt link.",
     receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the CBE screenshot again.",
-    success: "Your receipt was sent for automatic CBE verification. Verified requests appear in the live sheet.",
+    success: "Thank you. Your payment is verified and we will deliver the news.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
-    spreadsheetError: "We could not record this request live. Please try again.",
+    spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused CBE receipt and try again.",
     recording: "Recording request...",
     security: "Your private details stay confidential. Never submit passwords.",
   },
@@ -1013,11 +1021,11 @@ export default function App() {
   return (
     <div className="bad-news-app">
       <header className="site-header">
-        <a className="brand" href="#home" aria-label="John Bad News home">
+        <a className="brand" href="#home" aria-label="ጆኒ መርዶ home">
           <img src="/brand/johnny-logo.png" alt="" />
           <span>
-            <strong>JOHN</strong>
-            <small>{text.eyebrow}</small>
+            <strong>ጆኒ</strong>
+            <small>መርዶ</small>
           </span>
         </a>
         <nav aria-label="Primary navigation">
