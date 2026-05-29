@@ -1051,13 +1051,44 @@ export default function App() {
         return;
       }
 
-      const extractedUrl = await readCbeReceiptUrlFromImage(file);
+      let extractedUrl = "";
+      try {
+        extractedUrl = await readCbeReceiptUrlFromImage(file);
+      } catch (err) {
+        console.warn("[receipt] Primary scan failed, falling back to text OCR scan", err);
+      }
 
       if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
-        console.warn("[receipt] No CBE receipt URL found in screenshot scan", {
+        console.info("[receipt] QR/URL scan did not yield a valid CBE receipt URL. Running full text OCR fallback...");
+        const receiptText = await readReceiptTextWithOcr(file);
+        const lowerText = receiptText.toLowerCase();
+
+        // 1. Reference check: CBE transaction reference format (starts with FT)
+        const refMatch = receiptText.match(/\b(FT[A-Za-z0-9]{8,18})\b/i);
+        const reference = refMatch?.[1] || "";
+
+        // 2. Receiver check: expected receiver name or account suffix "8583"
+        const hasReceiverName = lowerText.includes("fraol") || lowerText.includes("eshetu");
+        const hasAccount = receiptText.includes("8583") || receiptText.replace(/\D/g, "").includes("1000239878583");
+
+        if (reference && (hasReceiverName || hasAccount)) {
+          console.info("[receipt] Client-side OCR verification successful!", {
+            reference,
+            hasReceiverName,
+            hasAccount
+          });
+          setReceiptName(file.name);
+          setCbeReceiptUrl(`ocr:${reference.toUpperCase()}`);
+          setReceiptError("");
+          return;
+        }
+
+        console.warn("[receipt] Text OCR fallback failed to verify CBE receipt details", {
           name: file.name,
-          extractedUrl,
-          expectedBaseUrl: cbeReceiptBaseUrl,
+          hasReference: Boolean(reference),
+          hasReceiverName,
+          hasAccount,
+          textPreview: receiptText.slice(0, 240)
         });
         setCbeReceiptUrl("");
         setReceiptError(formText.receiptQrMissing);

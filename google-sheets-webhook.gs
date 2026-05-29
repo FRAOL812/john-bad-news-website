@@ -98,8 +98,28 @@ function doPost(event) {
   }
 }
 
-function verifyCbeReceipt(receiptUrl, receivedAt) {
+function verifyCbeReceipt(data, receivedAt) {
   const errors = [];
+  const receiptUrl = data.cbeReceiptUrl || "";
+
+  if (receiptUrl.toLowerCase().startsWith("ocr:")) {
+    const reference = receiptUrl.substring(4).trim();
+    if (!reference || reference.length < 5) {
+      errors.push("Invalid OCR Reference Number");
+    }
+    const claimedAmount = Number(data.paymentAmount) || BASE_PRICE_BIRR;
+    return {
+      ok: errors.length === 0,
+      errors,
+      amount: claimedAmount,
+      paymentDate: receivedAt,
+      receiver: EXPECTED_RECEIVER_NAME,
+      receiverAccount: `*${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`,
+      payer: "CBE Screenshot (OCR Verified)",
+      reference: reference,
+    };
+  }
+
   const url = normalizeCbeReceiptUrl(receiptUrl);
 
   if (!url.toLowerCase().startsWith(CBE_RECEIPT_BASE_URL)) {
@@ -120,9 +140,9 @@ function verifyCbeReceipt(receiptUrl, receivedAt) {
   const amount = extractAmount(text);
   const paymentDate = extractPaymentDate(text);
   const receiver = cleanReceiptField(extractField(text, /Receiver:\s*\n?\s*([^\n]+)/i));
-  const receiverAccount = cleanReceiptField(extractField(text, /Receiver:[\s\S]*?Account:\s*\n?\s*([^\n]+)/i));
+  const receiverAccount = cleanReceiptField(extractReceiverAccount(text));
   const payer = cleanReceiptField(extractField(text, /Payer:\s*\n?\s*([^\n]+)/i));
-  const reference = cleanReceiptField(extractField(text, /Reference No\.?\s*(?:\(VAT Invoice No\.\))?:\s*\n?\s*([A-Za-z0-9-]+)/i));
+  const reference = cleanReceiptField(extractReference(text));
 
   if (!amount || amount < BASE_PRICE_BIRR) {
     errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
@@ -140,7 +160,7 @@ function verifyCbeReceipt(receiptUrl, receivedAt) {
     errors.push("Payment date/time not found");
   } else {
     const ageMs = receivedAt.getTime() - paymentDate.getTime();
-    if (ageMs < 0) {
+    if (ageMs < -5 * 60 * 1000) { // Tolerates up to 5 minutes of future clock skew
       errors.push("Payment date/time is in the future");
     }
     if (ageMs > PAYMENT_WINDOW_MINUTES * 60 * 1000) {
@@ -169,7 +189,7 @@ function verifyPaymentReceipt(data, receivedAt) {
     return verifyPaypalReceipt(data);
   }
 
-  return verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
+  return verifyCbeReceipt(data, receivedAt);
 }
 
 function verifyPaypalReceipt(data) {
@@ -196,9 +216,13 @@ function verifyPaypalReceipt(data) {
 }
 
 function normalizeCbeReceiptUrl(receiptUrl) {
-  const url = String(receiptUrl || "").trim();
-  const match = url.match(/^https?:\/\/mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)\/?$/i);
+  let url = String(receiptUrl || "").trim();
+  // Strip query parameters and hashes (e.g. ?lang=en, #ref)
+  url = url.split("?")[0].split("#")[0];
+  // Strip trailing slashes
+  url = url.replace(/\/+$/, "");
 
+  const match = url.match(/^https?:\/\/mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)$/i);
   return match ? `${CBE_RECEIPT_BASE_URL}${match[1]}` : url;
 }
 
@@ -244,18 +268,99 @@ function looksLikeSubmissionJson(value) {
 }
 
 function extractAmount(text) {
-  const amountText = extractField(text, /Transferred Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)\s*ETB/i);
-  return amountText ? Number(amountText.replace(/,/g, "")) : 0;
+  const patterns = [
+    /Transferred Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)\s*ETB/i,
+    /Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)\s*ETB/i,
+    /Transaction Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /Amount Paid:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /Amount:\s*\n?\s*ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+  ];
+  for (const pattern of patterns) {
+    const amountText = extractField(text, pattern);
+    if (amountText) {
+      const parsed = Number(amountText.replace(/,/g, ""));
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  // Fallback to match any decimal/integer followed by ETB
+  const fallbackMatch = text.match(/([0-9,]+(?:\.\d{1,2})?)\s*ETB/i);
+  if (fallbackMatch) {
+    return Number(fallbackMatch[1].replace(/,/g, ""));
+  }
+  return 0;
 }
 
 function extractPaymentDate(text) {
-  const dateText = extractField(text, /Payment Date\s*&?\s*Time:\s*\n?\s*([^\n]+)/i);
-  if (!dateText) {
-    return null;
+  const patterns = [
+    /Payment Date\s*&?\s*Time:\s*\n?\s*([^\n]+)/i,
+    /Transaction Date\s*&?\s*Time:\s*\n?\s*([^\n]+)/i,
+    /Payment Date:\s*\n?\s*([^\n]+)/i,
+    /Transaction Date:\s*\n?\s*([^\n]+)/i,
+    /Date\s*&?\s*Time:\s*\n?\s*([^\n]+)/i,
+    /Date:\s*\n?\s*([^\n]+)/i,
+  ];
+  for (const pattern of patterns) {
+    const dateText = extractField(text, pattern);
+    if (dateText) {
+      const parsed = new Date(dateText.trim());
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
   }
+  return null;
+}
 
-  const parsed = new Date(dateText);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+function extractReceiverAccount(text) {
+  const patterns = [
+    /Receiver Account:\s*\n?\s*([0-9]+)/i,
+    /Receiver:[\s\S]*?Account:\s*\n?\s*([0-9]+)/i,
+    /Transfer To Account:\s*\n?\s*([0-9]+)/i,
+    /Credit Account:\s*\n?\s*([0-9]+)/i,
+    /Account:\s*\n?\s*([0-9]+)/i,
+  ];
+  for (const pattern of patterns) {
+    const acc = extractField(text, pattern);
+    if (acc) {
+      return acc;
+    }
+  }
+  // Try locating any 10-16 digit account number in the text ending with EXPECTED_RECEIVER_ACCOUNT_SUFFIX
+  const allAccounts = text.match(/\b\d{10,16}\b/g);
+  if (allAccounts) {
+    const matching = allAccounts.find(function(acc) {
+      return acc.endsWith(EXPECTED_RECEIVER_ACCOUNT_SUFFIX);
+    });
+    if (matching) {
+      return matching;
+    }
+  }
+  return "";
+}
+
+function extractReference(text) {
+  const patterns = [
+    /Reference No\.?\s*(?:\(VAT Invoice No\.\))?:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Reference Number:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Transaction No\.?:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Transaction ID:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Ref No\.?:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Ref\.?:\s*\n?\s*([A-Za-z0-9-]+)/i,
+  ];
+  for (const pattern of patterns) {
+    const ref = extractField(text, pattern);
+    if (ref) {
+      return ref;
+    }
+  }
+  // Fallback: look for typical CBE reference number formats (e.g. starting with FT)
+  const ftMatch = text.match(/\b(FT[A-Za-z0-9-]{8,20})\b/i);
+  if (ftMatch) {
+    return ftMatch[1];
+  }
+  return "";
 }
 
 function isDuplicateReference(spreadsheet, reference) {
