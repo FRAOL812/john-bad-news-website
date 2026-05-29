@@ -50,9 +50,9 @@ function doPost(event) {
     const data = JSON.parse(rawBody);
     data.cbeReceiptUrl = normalizeCbeReceiptUrl(data.cbeReceiptUrl);
     const audioLink = saveAudioFile(data);
-    const verification = verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
+    const verification = verifyPaymentReceipt(data, receivedAt);
 
-    if (isDuplicateReceiptUrl(spreadsheet, data.cbeReceiptUrl)) {
+    if (data.paymentMethod !== "paypal" && isDuplicateReceiptUrl(spreadsheet, data.cbeReceiptUrl)) {
       verification.ok = false;
       verification.errors.push("CBE receipt link has already been submitted");
     }
@@ -78,7 +78,7 @@ function doPost(event) {
       cleanCell(data.phone),
       cleanCell(data.badNews),
       cleanCell(data.receiver),
-      cleanCell(data.paymentAmount),
+      formatClaimedPayment(data),
       verification.amount || "",
       cleanCell(verification.payer),
       cleanCell(verification.receiver),
@@ -161,6 +161,37 @@ function verifyCbeReceipt(receiptUrl, receivedAt) {
     receiverAccount,
     payer,
     reference,
+  };
+}
+
+function verifyPaymentReceipt(data, receivedAt) {
+  if (data.paymentMethod === "paypal") {
+    return verifyPaypalReceipt(data);
+  }
+
+  return verifyCbeReceipt(data.cbeReceiptUrl, receivedAt);
+}
+
+function verifyPaypalReceipt(data) {
+  const amount = Number(data.paymentAmount);
+  const minimumAmount = String(data.serviceTier || "").toLowerCase().indexOf("urgent") !== -1 ? 100 : 25;
+
+  if (!data.paypalReceiptVerified) {
+    return { ok: false, errors: ["PayPal receipt screenshot was not verified"] };
+  }
+
+  if (!Number.isFinite(amount) || amount < minimumAmount) {
+    return { ok: false, errors: [`PayPal amount is below ${minimumAmount} USD`] };
+  }
+
+  return {
+    ok: true,
+    errors: [],
+    amount,
+    payer: "PayPal screenshot",
+    receiver: "Yonatan Woldegiorgis",
+    receiverAccount: "@YonatanWoldegiorgis9",
+    reference: cleanCell(data.receiptVerificationValue || data.cbeReceiptUrl || ""),
   };
 }
 
@@ -286,7 +317,7 @@ function appendRejected(spreadsheet, receivedAt, data, verification) {
     cleanCell(data.phone),
     cleanCell(data.badNews),
     cleanCell(data.receiver),
-    cleanCell(data.paymentAmount),
+    formatClaimedPayment(data),
     verification.amount || "",
     cleanCell(verification.payer),
     cleanCell(verification.receiver),
@@ -312,7 +343,7 @@ function appendIncoming(spreadsheet, receivedAt, data, audioLink) {
     cleanCell(data.phone),
     cleanCell(data.badNews),
     cleanCell(data.receiver),
-    cleanCell(data.paymentAmount),
+    formatClaimedPayment(data),
     "",
     "",
     "",
@@ -324,6 +355,30 @@ function appendIncoming(spreadsheet, receivedAt, data, audioLink) {
     cleanCell(data.language),
     "",
   ]);
+}
+
+function formatClaimedPayment(data) {
+  const amount = cleanCell(data.paymentAmount);
+  const currency = cleanCell(data.paymentCurrency || (data.paymentMethod === "paypal" ? "USD" : "ETB"));
+  const method = cleanCell(data.paymentMethod || "cbe").toUpperCase();
+  const tier = cleanCell(data.serviceTier);
+  const contact = cleanCell(data.contactChannel);
+  const specialAmount = cleanCell(data.specialRequestAmount);
+  const parts = [`${amount} ${currency}`, method];
+
+  if (tier) {
+    parts.push(tier);
+  }
+
+  if (specialAmount) {
+    parts.push(`Special: ${specialAmount} ${currency}`);
+  }
+
+  if (contact) {
+    parts.push(`Contact: ${contact}`);
+  }
+
+  return parts.join(" | ");
 }
 
 function saveAudioFile(data) {
@@ -473,7 +528,15 @@ function cleanCell(value) {
 
 function receiptLinkFormula(url) {
   const cleanUrl = cleanCell(url);
-  return cleanUrl ? `=HYPERLINK("${cleanUrl}", "Open CBE receipt")` : "";
+  if (!cleanUrl) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(cleanUrl)) {
+    return `=HYPERLINK("${cleanUrl}", "Open CBE receipt")`;
+  }
+
+  return cleanUrl;
 }
 
 function jsonResponse(payload) {

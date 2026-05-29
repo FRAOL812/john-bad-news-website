@@ -29,6 +29,9 @@ type Step = {
 };
 
 type PlatformName = "facebook" | "telegram" | "whatsapp" | "instagram";
+type ServiceTierId = "basic" | "urgent";
+type PaymentMethod = "cbe" | "paypal";
+type PaymentOptionId = "local-basic" | "local-urgent" | "abroad-basic" | "abroad-urgent";
 
 type SubmissionRecord = {
   id: string;
@@ -37,13 +40,16 @@ type SubmissionRecord = {
   phone: string;
   badNews: string;
   receiver: string;
+  serviceTier: string;
+  paymentMethod: PaymentMethod;
+  contactChannel: string;
   paymentAmount: string;
+  paymentCurrency: string;
+  specialRequestAmount: string;
   paymentStatus: string;
   cbeReceiptUrl: string;
-  audioFile: string;
-  audioMimeType?: string;
-  audioSize?: number;
-  audioDataBase64?: string;
+  receiptVerificationValue: string;
+  paypalReceiptVerified?: boolean;
   receiptFile: string;
   language: "en" | "am";
 };
@@ -65,11 +71,23 @@ declare global {
 }
 
 const basePriceBirr = 500;
+const urgentPriceBirr = 2000;
+const abroadBasePriceUsd = 25;
+const abroadUrgentPriceUsd = 100;
+const paypalDisplayName = "Yonatan Woldegiorgis";
+const paypalUsername = "@YonatanWoldegiorgis9";
+const youtubeChannelUrl = "https://www.youtube.com/";
 const maxReceiptSize = 5 * 1024 * 1024;
-const maxAudioSize = 3 * 1024 * 1024;
 const cbeReceiptBaseUrl = "https://mbreciept.cbe.com.et/";
 const acceptedReceiptTypes = ["image/jpeg", "image/png"];
 const acceptedReceiptExtensions = [".jpg", ".jpeg", ".png"];
+
+const paymentOptions: Record<PaymentOptionId, { tier: ServiceTierId; method: PaymentMethod; price: number; currency: "ETB" | "USD"; contactChannel: string }> = {
+  "local-basic": { tier: "basic", method: "cbe", price: basePriceBirr, currency: "ETB", contactChannel: "Phone" },
+  "local-urgent": { tier: "urgent", method: "cbe", price: urgentPriceBirr, currency: "ETB", contactChannel: "Phone" },
+  "abroad-basic": { tier: "basic", method: "paypal", price: abroadBasePriceUsd, currency: "USD", contactChannel: "WhatsApp" },
+  "abroad-urgent": { tier: "urgent", method: "paypal", price: abroadUrgentPriceUsd, currency: "USD", contactChannel: "WhatsApp" },
+};
 
 const countryCodes = [
   { code: "+251", name: "Ethiopia", flag: "🇪🇹", iso: "et", placeholder: "e.g. 911 234 567" },
@@ -232,6 +250,25 @@ async function readReceiptUrlWithOcr(file: File) {
   return cbeReceiptUrl;
 }
 
+async function readReceiptTextWithOcr(file: File) {
+  console.info("[receipt] Using OCR text scanner");
+  const { recognize } = await import("tesseract.js");
+  const result = await recognize(file, "eng");
+  return result.data.text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeComparableText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9@]+/g, "");
+}
+
+function hasPaypalIdentity(value: string) {
+  const normalized = normalizeComparableText(value);
+  return (
+    normalized.includes(normalizeComparableText(paypalDisplayName)) ||
+    normalized.includes(normalizeComparableText(paypalUsername))
+  );
+}
+
 async function readCbeReceiptUrlFromImage(file: File) {
   if (!canScanReceiptQr()) {
     console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
@@ -330,38 +367,48 @@ const trustTranslations = {
   },
 };
 
-const reviewTranslations = {
-  en: {
-    title: "What People Say",
-    intro: "Short notes from people who trusted us with difficult conversations.",
-    items: [
-      { quote: "They handled a very sensitive message calmly and professionally.", author: "Private client" },
-      { quote: "Fast confirmation, clear process, and respectful delivery.", author: "Verified sender" },
-      { quote: "The privacy gave me peace of mind from start to finish.", author: "Anonymous customer" },
-    ],
-  },
-  am: {
-    title: "ሰዎች ምን ይላሉ",
-    intro: "አስቸጋሪ ውይይቶችን ለእኛ ካመኑ ሰዎች አጭር አስተያየቶች።",
-    items: [
-      { quote: "በጣም ስሜታዊ መልእክትን በሰላም እና በሙያዊነት አደረሱ።", author: "የግል ደንበኛ" },
-      { quote: "ፈጣን ማረጋገጫ፣ ግልጽ ሂደት እና በክብር ማድረስ።", author: "የተረጋገጠ ላኪ" },
-      { quote: "ግላዊነቱ ከመጀመሪያ እስከ መጨረሻ እርጋታ ሰጠኝ።", author: "ስም-አልባ ደንበኛ" },
-    ],
-  },
-};
-
 const featureTranslations = {
   en: [
-    { title: "100% Confidential", copy: "Your privacy is our priority." },
+    { title: "Clear Process", copy: "We deliver every message carefully and clearly." },
     { title: "Fast & Reliable", copy: "We deliver on time, every time." },
     { title: "Professional Delivery", copy: "Handled with care and respect." },
   ],
   am: [
-    { title: "100% ምስጢራዊ", copy: "ግላዊነትዎ ዋና ቅድሚያችን ነው።" },
+    { title: "ግልጽ ሂደት", copy: "እያንዳንዱን መልእክት በጥንቃቄ እና በግልጽ እናደርሳለን።" },
     { title: "ፈጣን እና አስተማማኝ", copy: "ሁልጊዜ በጊዜው እናደርሳለን።" },
-    { title: "ሙያዊ ማድረስ", copy: "በጥንቃቄ እና በክብር ይከናወናል።" },
+    { title: "የሙያ ስነምግባር", copy: "በጥንቃቄ እና በክብር ይከናወናል።" },
   ],
+};
+
+const serviceSummaryTranslations = {
+  en: {
+    title: "Our Services",
+    note: "For customers abroad, we will contact you on WhatsApp.",
+    youtubeTitle: "Follow Our YouTube Channel",
+    youtubeCopy: "Subscribe to our channel to follow upcoming news deliveries, recorded host/respondent conversations, and new episodes.",
+    youtubeSteps: ["Subscribe", "Follow news deliveries", "Watch new episodes"],
+    youtubeLink: "Subscribe on YouTube",
+    plans: [
+      { name: "Local Basic", price: "500 Birr", detail: "Standard delivery", badge: "Basic" },
+      { name: "Local Urgent", price: "2000 Birr", detail: "24-hour update", badge: "Fast" },
+      { name: "Abroad Basic", price: "25 USD", detail: "WhatsApp contact", badge: "Abroad" },
+      { name: "Abroad Urgent", price: "100 USD", detail: "Priority WhatsApp contact", badge: "Priority" },
+    ],
+  },
+  am: {
+    title: "አገልግሎታችን",
+    note: "ውጭ ሀገር ላሉ ደንበኞች በWhatsApp እናገኝዎታለን።",
+    youtubeTitle: "YouTube ቻናላችንን ይከተሉ",
+    youtubeCopy: "መርዶ ስናደርስ፣ የhost/respondent የስልክ ውይይቶችን እና አዳዲስ episodes ለመከታተል ቻናላችንን subscribe ያድርጉ።",
+    youtubeSteps: ["Subscribe ያድርጉ", "መርዶ ማድረሻዎችን ይከታተሉ", "አዳዲስ episodes ይመልከቱ"],
+    youtubeLink: "በYouTube Subscribe ያድርጉ",
+    plans: [
+      { name: "የኢትዮጵያ መደበኛ", price: "500 ብር", detail: "መደበኛ አገልግሎት", badge: "መደበኛ" },
+      { name: "የኢትዮጵያ አስቸኳይ", price: "2000 ብር", detail: "በ24 ሰአት ውስጥ ማሳወቅ", badge: "ፈጣን" },
+      { name: "የውጭ መደበኛ", price: "25 USD", detail: "በWhatsApp ግንኙነት", badge: "ውጭ" },
+      { name: "የውጭ አስቸኳይ", price: "100 USD", detail: "ቅድሚያ ያለው WhatsApp ግንኙነት", badge: "ቅድሚያ" },
+    ],
+  },
 };
 
 const stepTranslations = {
@@ -390,74 +437,118 @@ const processTranslations = {
   },
 };
 
+const serviceTierTranslations: Record<"en" | "am", Record<ServiceTierId, { label: string; detail: string }>> = {
+  en: {
+    basic: { label: "Basic", detail: "500 Birr / 25 USD" },
+    urgent: { label: "Urgent", detail: "2000 Birr / 100 USD" },
+  },
+  am: {
+    basic: { label: "መደበኛ", detail: "500 ብር / 25 USD" },
+    urgent: { label: "አስቸኳይ", detail: "2000 ብር / 100 USD" },
+  },
+};
+
+const paymentOptionTranslations: Record<"en" | "am", Record<PaymentOptionId, string>> = {
+  en: {
+    "local-basic": "Local Basic - 500 Birr",
+    "local-urgent": "Local Urgent - 2000 Birr",
+    "abroad-basic": "Abroad Basic - 25 USD",
+    "abroad-urgent": "Abroad Urgent - 100 USD",
+  },
+  am: {
+    "local-basic": "የኢትዮጵያ መደበኛ - 500 ብር",
+    "local-urgent": "የኢትዮጵያ አስቸኳይ - 2000 ብር",
+    "abroad-basic": "የውጭ መደበኛ - 25 USD",
+    "abroad-urgent": "የውጭ አስቸኳይ - 100 USD",
+  },
+};
+
 const formTranslations = {
   en: {
     title: "Contact Form",
     intro: "Send your bad news. We will deliver it for you.",
     name: "Name",
     namePlaceholder: "Enter your full name",
-    phone: "Phone No",
+    phone: "Sender Phone Number",
+    receiverPhone: "Receiver Phone Number",
     message: "Bad News",
     messagePlaceholder: "Write the bad news you want us to deliver...",
-    audioUpload: "Upload Audio(optional)",
-    audioTooLarge: "Audio file must be 3MB or smaller.",
     receiver: "Receiver",
     receiverPlaceholder: "Enter receiver's name or phone number",
+    serviceTier: "Service",
+    paymentDetails: "Payment details",
     accountNo: "Account No:- 1000239878583",
     accountName: "Fraol Eshetu Hailu",
-    basePrice: "Base price: 500 Birr",
-    paymentAmount: "Amount Paid (Birr)",
-    paymentAmountPlaceholder: "Enter 500 or more",
-    paymentTooLow: "The base price is 500 Birr. Please enter at least 500 Birr.",
+    paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
+    basePrice: "Selected price",
+    urgentPrice: "Urgent: 2000 Birr / 100 USD",
+    abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
+    liveNotice: "For YouTube Live content, applicants will be informed before anything is shown live.",
+    specialRequestAmount: "Special Request Payment",
+    specialRequestAmountPlaceholder: "Optional extra amount",
+    youtubeNoticeTitle: "YouTube Channel Notice",
+    youtubeNotice: "The conversation between the host and the respondent will be recorded and may be posted on our YouTube channel. We will notify applicants before anything is shown live or published.",
+    paymentAmount: "Amount Paid",
+    paymentAmountPlaceholder: "Enter the selected service amount",
+    paymentTooLow: "The amount is below the selected service price.",
     paymentStatusPending: "Pending receipt confirmation",
     receiptUpload: "Click to upload receipt",
-    receiptHelp: "Upload a CBE screenshot with the QR code or receipt link visible. JPG or PNG only.",
-    receiptReady: "CBE receipt link found",
-    receiptChecking: "Checking screenshot for CBE receipt link...",
+    receiptHelp: "Ethiopia: upload a CBE screenshot with QR/link. Abroad: upload a PayPal screenshot showing Yonatan Woldegiorgis or @YonatanWoldegiorgis9.",
+    receiptReady: "Receipt identity verified",
+    receiptChecking: "Checking receipt screenshot...",
     receiptCheckingWait: "Please wait while we check your receipt screenshot.",
     receiptMissing: "Please upload your payment receipt before submitting.",
-    receiptInvalidType: "Upload a JPG or PNG CBE receipt screenshot only.",
-    receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a CBE screenshot with the QR/payment link visible.",
+    receiptInvalidType: "Upload a JPG or PNG receipt screenshot only.",
+    receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a screenshot with the payment details visible.",
     receiptTooLarge: "Receipt must be 5MB or smaller.",
-    receiptQrMissing: "Invalid receipt. Upload a valid CBE screenshot with a visible QR code or receipt link.",
+    receiptQrMissing: "Invalid receipt. Upload a valid CBE screenshot or PayPal screenshot showing the correct PayPal identity.",
     receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the CBE screenshot again.",
-    success: "Thank you. Your payment is verified and we will deliver the news.",
+    success: "Thank you. Your receipt is verified and we will deliver the news.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
     spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused CBE receipt and try again.",
     recording: "Recording request...",
     security: "Your private details stay confidential. Never submit passwords.",
   },
   am: {
-    title: "የመገናኛ ቅጽ",
+    title: "የመርዶ ቅጽ",
     intro: "መልእክትዎን ይላኩ። እኛ እናደርሰዋለን።",
     name: "ስም",
     namePlaceholder: "ሙሉ ስምዎን ያስገቡ",
-    phone: "ስልክ ቁጥር",
+    phone: "የላኪ ስልክ ቁጥር",
+    receiverPhone: "የተቀባይ ስልክ ቁጥር",
     message: "መጥፎ ዜና",
     messagePlaceholder: "እንድናደርስልዎ የሚፈልጉትን መጥፎ ዜና ይጻፉ...",
-    audioUpload: "ድምጽ ይስቀሉ (አማራጭ)",
-    audioTooLarge: "የድምጽ ፋይሉ 3MB ወይም ከዚያ በታች መሆን አለበት።",
     receiver: "ተቀባይ",
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
+    serviceTier: "አገልግሎት",
+    paymentDetails: "የክፍያ መረጃ",
     accountNo: "የሂሳብ ቁጥር:- 1000239878583",
     accountName: "ፍራኦል እሸቱ ኃይሉ",
-    basePrice: "መነሻ ዋጋ፡ 500 ብር",
-    paymentAmount: "የተከፈለ መጠን (ብር)",
-    paymentAmountPlaceholder: "500 ወይም ከዚያ በላይ ያስገቡ",
-    paymentTooLow: "መነሻ ዋጋው 500 ብር ነው። እባክዎ ቢያንስ 500 ብር ያስገቡ።",
+    paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
+    basePrice: "የተመረጠው ዋጋ",
+    urgentPrice: "አስቸኳይ፡ 2000 ብር / 100 USD",
+    abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
+    liveNotice: "ለYouTube Live content ከማሳየታችን በፊት አመልካቾችን እናሳውቃለን።",
+    specialRequestAmount: "የልዩ ጥያቄ ክፍያ",
+    specialRequestAmountPlaceholder: "ተጨማሪ መጠን ካለ",
+    youtubeNoticeTitle: "የYouTube Channel ማሳወቂያ",
+    youtubeNotice: "በhost እና በrespondent መካከል የሚደረገው የስልክ ውይይት ይቀረጻል፣ በYouTube ቻናላችን ላይም ሊለጠፍ ይችላል።",
+    paymentAmount: "የተከፈለ መጠን",
+    paymentAmountPlaceholder: "የመረጡትን የአገልግሎት ዋጋ ያስገቡ",
+    paymentTooLow: "የተከፈለው መጠን ከመረጡት አገልግሎት ዋጋ በታች ነው።",
     paymentStatusPending: "ደረሰኝ ማረጋገጫ በመጠባበቅ ላይ",
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
-    receiptHelp: "QR code ወይም receipt link የሚታይበት የCBE ስክሪንሾት ይስቀሉ። JPG ወይም PNG ብቻ።",
-    receiptReady: "የCBE ደረሰኝ ሊንክ ተገኝቷል",
-    receiptChecking: "የCBE ደረሰኝ ሊንክ በስክሪንሾቱ ውስጥ እየተፈለገ ነው...",
+    receiptHelp: "ኢትዮጵያ፡ QR/link የሚታይበት የCBE ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
+    receiptReady: "የደረሰኝ መረጃ ተረጋግጧል",
+    receiptChecking: "ደረሰኙ እየተመረመረ ነው...",
     receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
     receiptMissing: "ከመላክዎ በፊት የክፍያ ደረሰኝዎን ይስቀሉ።",
-    receiptInvalidType: "የCBE ደረሰኝ JPG ወይም PNG ስክሪንሾት ብቻ ይስቀሉ።",
-    receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። QR/payment link የሚታይበት የCBE ስክሪንሾት ይስቀሉ።",
+    receiptInvalidType: "የደረሰኝ JPG ወይም PNG ስክሪንሾት ብቻ ይስቀሉ።",
+    receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። የክፍያ መረጃው የሚታይበት ስክሪንሾት ይስቀሉ።",
     receiptTooLarge: "ደረሰኙ 5MB ወይም ከዚያ በታች መሆን አለበት።",
-    receiptQrMissing: "የCBE ደረሰኝ ሊንክ አልተገኘም። QR code ወይም receipt link የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
+    receiptQrMissing: "ትክክለኛ የCBE ወይም የPayPal ደረሰኝ አልተገኘም። ትክክለኛው መረጃ የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
     receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደገፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የCBE ስክሪንሾቱን እንደገና ይስቀሉ።",
-    success: "ደረሰኝዎ ለCBE ራስ-ሰር ማረጋገጫ ተልኳል። የተረጋገጡ ጥያቄዎች በቀጥታ ሰንጠረዡ ውስጥ ይታያሉ።",
+    success: "እናመሰግናለን። ደረሰኝዎ ተረጋግጧል፣ መልእክቱንም እናደርሳለን።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
     spreadsheetError: "ጥያቄውን በቀጥታ መመዝገብ አልቻልንም። እባክዎ ደግመው ይሞክሩ።",
     recording: "ጥያቄው እየተመዘገበ ነው...",
@@ -465,7 +556,7 @@ const formTranslations = {
   },
 };
 
-const navTargets = ["home", "how-it-works", "about-us", "reviews", "faq", "contact"];
+const navTargets = ["home", "how-it-works", "faq", "contact"];
 
 const faqItems = [
   {
@@ -485,7 +576,7 @@ const faqItems = [
 const pageTranslations = {
   en: {
     eyebrow: "መርዶ",
-    nav: ["Home", "How It Works", "About Us", "Reviews", "FAQ", "Contact"],
+    nav: ["Home", "How It Works", "FAQ", "Contact"],
     cta: "Send Bad News",
     headline1: "We Deliver",
     headline2: "The Bad News",
@@ -494,7 +585,7 @@ const pageTranslations = {
     submit: "Submit",
     faqTitle: "Questions Before You Send?",
     faqIntro: "A few details people usually want to know before handing us the hard conversation.",
-    footerCopy: "We deliver the bad news you don't want to say, so you can focus on what matters.",
+    footerCopy: "ጆኒ መርዶ",
     contactTitle: "Contact Us",
     hours: "Mon - Sun: 8:00 AM - 10:00 PM",
     followTitle: "Follow Us",
@@ -502,20 +593,20 @@ const pageTranslations = {
   },
   am: {
     eyebrow: "መጥፎ ዜና",
-    nav: ["መነሻ", "እንዴት ይሰራል", "ስለ እኛ", "አስተያየቶች", "ጥያቄ", "አግኙን"],
+    nav: ["መነሻ", "እንዴት ይሰራል", "ጥያቄ", "አግኙን"],
     cta: "መልእክት ላክ",
-    headline1: "ለመናገር የሚከብድ መጥፎ ዜናዎትን",
-    headline2: "እናደርሳለን",
+    headline1: "ለመናገር የሚከብድ ዜናዎትን",
+    headline2: "እናደርሳለን!",
     headline3: "",
-    intro: "ጆን ባድ ኒውስ አስቸጋሪ መልእክቶችን በምስጢር፣ በሙያዊነት እና በጥንቃቄ ያደርሳል።",
+    intro: "ጆኒ መርዶ አስቸጋሪ መልእክቶችን በሙያዊነት እና በጥንቃቄ ያደርሳል።",
     submit: "ላክ",
     faqTitle: "ከመላክዎ በፊት ጥያቄ አለዎት?",
     faqIntro: "አስቸጋሪ መልእክትን ከመላክ በፊት ብዙ ሰዎች የሚጠይቁት መረጃ።",
-    footerCopy: "እርስዎ ማለት የማይፈልጉትን መጥፎ ዜና እናደርሳለን፣ እርስዎም አስፈላጊው ላይ ያተኩሩ።",
+    footerCopy: "ጆኒ መርዶ",
     contactTitle: "አግኙን",
     hours: "ሰኞ - እሁድ፡ 8:00 AM - 10:00 PM",
     followTitle: "ይከተሉን",
-    tagline: "ምስጢር። ማድረስ። ተጠናቋል።",
+    tagline: "Discretion. Delivery. Done.",
   },
 };
 
@@ -726,25 +817,43 @@ export default function App() {
   const [receiptError, setReceiptError] = useState("");
   const [cbeReceiptUrl, setCbeReceiptUrl] = useState("");
   const [isReceiptChecking, setIsReceiptChecking] = useState(false);
-  const [audioName, setAudioName] = useState("");
-  const [audioMimeType, setAudioMimeType] = useState("");
-  const [audioSize, setAudioSize] = useState(0);
-  const [audioDataBase64, setAudioDataBase64] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
-  const [audioError, setAudioError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
-  const [language, setLanguage] = useState<"en" | "am">("en");
+  const [language, setLanguage] = useState<"en" | "am">("am");
   const [selectedCountryCode, setSelectedCountryCode] = useState("+251");
   const [receiverCountryCode, setReceiverCountryCode] = useState("+251");
+  const [paymentOptionId, setPaymentOptionId] = useState<PaymentOptionId>("local-basic");
   const text = pageTranslations[language];
   const featureText = featureTranslations[language];
+  const serviceSummaryText = serviceSummaryTranslations[language];
   const stepText = stepTranslations[language];
   const processText = processTranslations[language];
   const formText = formTranslations[language];
   const faqText = faqTranslations[language];
-  const trustText = trustTranslations[language];
-  const reviewText = reviewTranslations[language];
+  const selectedPaymentOption = paymentOptions[paymentOptionId];
+  const serviceTier = selectedPaymentOption.tier;
+  const paymentMethod = selectedPaymentOption.method;
+  const isAbroadPayment = paymentMethod === "paypal";
+  const selectedPrice = selectedPaymentOption.price;
+  const selectedCurrency = selectedPaymentOption.currency;
+  const serviceTierText = serviceTierTranslations[language];
+  const paymentOptionText = paymentOptionTranslations[language];
+
+  function clearReceiptVerification() {
+    setReceiptName("");
+    setReceiptError("");
+    setCbeReceiptUrl("");
+  }
+
+  function handleSenderCountryChange(value: string) {
+    setSelectedCountryCode(value);
+  }
+
+  function handlePaymentOptionChange(value: PaymentOptionId) {
+    setPaymentOptionId(value);
+    clearReceiptVerification();
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -776,21 +885,17 @@ export default function App() {
       return;
     }
 
-    if (audioError) {
-      setSubmissionError(audioError);
-      setSubmitted(false);
-      return;
-    }
-
     if (!getSpreadsheetWebhookUrl()) {
       setSubmissionError(formText.spreadsheetMissing);
       setSubmitted(false);
       return;
     }
 
-    const paymentAmount = Number(form.get("paymentAmount"));
+    const specialRequestAmount = Number(form.get("specialRequestAmount") || 0);
+    const cleanSpecialRequestAmount = Number.isFinite(specialRequestAmount) && specialRequestAmount > 0 ? specialRequestAmount : 0;
+    const paymentAmount = selectedPrice + cleanSpecialRequestAmount;
 
-    if (!Number.isFinite(paymentAmount) || paymentAmount < basePriceBirr) {
+    if (!Number.isFinite(paymentAmount) || paymentAmount < selectedPrice) {
       setSubmissionError(formText.paymentTooLow);
       setSubmitted(false);
       return;
@@ -803,13 +908,16 @@ export default function App() {
       phone: `${selectedCountryCode}${String(form.get("phone") ?? "")}`,
       badNews: String(form.get("badNews") ?? ""),
       receiver: `${receiverCountryCode}${String(form.get("receiver") ?? "")}`,
+      serviceTier: `${serviceTier} - ${serviceTierText[serviceTier].label}`,
+      paymentMethod,
+      contactChannel: selectedPaymentOption.contactChannel,
       paymentAmount: `${paymentAmount}`,
+      paymentCurrency: selectedCurrency,
+      specialRequestAmount: cleanSpecialRequestAmount > 0 ? `${cleanSpecialRequestAmount}` : "",
       paymentStatus: formText.paymentStatusPending,
       cbeReceiptUrl,
-      audioFile: audioName || "-",
-      audioMimeType,
-      audioSize,
-      audioDataBase64,
+      receiptVerificationValue: cbeReceiptUrl,
+      paypalReceiptVerified: paymentMethod === "paypal",
       receiptFile: receiptName,
       language,
     };
@@ -822,11 +930,6 @@ export default function App() {
       formElement.reset();
       setReceiptName("");
       setCbeReceiptUrl("");
-      setAudioName("");
-      setAudioMimeType("");
-      setAudioSize(0);
-      setAudioDataBase64("");
-      setAudioError("");
     } catch (error) {
       console.error("[receipt] Submission failed", {
         error,
@@ -868,7 +971,7 @@ export default function App() {
       diagnostics: getReceiptScanDiagnostics(),
     });
 
-    if (!canScanReceiptQr()) {
+    if (paymentMethod === "cbe" && !canScanReceiptQr()) {
       console.warn("[receipt] Receipt scan blocked by browser capability/context", getReceiptScanDiagnostics());
       receiptInput.value = "";
       setReceiptName("");
@@ -922,6 +1025,32 @@ export default function App() {
       setReceiptName(file.name);
       setReceiptError("");
       setIsReceiptChecking(true);
+      if (paymentMethod === "paypal") {
+        const receiptText = await readReceiptTextWithOcr(file);
+
+        if (!hasPaypalIdentity(receiptText)) {
+          console.warn("[receipt] PayPal identity not found in screenshot", {
+            name: file.name,
+            expectedName: paypalDisplayName,
+            expectedUsername: paypalUsername,
+            textPreview: receiptText.slice(0, 180),
+          });
+          setCbeReceiptUrl("");
+          setReceiptError(formText.receiptQrMissing);
+          return;
+        }
+
+        console.info("[receipt] PayPal receipt identity accepted", {
+          name: file.name,
+          expectedName: paypalDisplayName,
+          expectedUsername: paypalUsername,
+        });
+        setReceiptName(file.name);
+        setCbeReceiptUrl(`paypal:${paypalUsername}`);
+        setReceiptError("");
+        return;
+      }
+
       const extractedUrl = await readCbeReceiptUrlFromImage(file);
 
       if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
@@ -952,60 +1081,6 @@ export default function App() {
       setReceiptError(formText.receiptQrMissing);
     } finally {
       setIsReceiptChecking(false);
-    }
-  }
-
-  async function handleAudioChange(event: FormEvent<HTMLInputElement>) {
-    const audioInput = event.currentTarget;
-    const file = audioInput.files?.[0];
-    setSubmitted(false);
-    setSubmissionError("");
-
-    if (!file) {
-      setAudioName("");
-      setAudioMimeType("");
-      setAudioSize(0);
-      setAudioDataBase64("");
-      setAudioError("");
-      return;
-    }
-
-    if (file.size > maxAudioSize) {
-      console.warn("[audio] Rejected oversized audio file", {
-        name: file.name,
-        size: file.size,
-        maxAudioSize,
-      });
-      audioInput.value = "";
-      setAudioName("");
-      setAudioMimeType("");
-      setAudioSize(0);
-      setAudioDataBase64("");
-      setAudioError(formText.audioTooLarge);
-      return;
-    }
-
-    try {
-      const dataBase64 = await readFileAsBase64(file);
-      console.info("[audio] Audio file prepared for spreadsheet webhook", {
-        name: file.name,
-        type: file.type || "audio/*",
-        size: file.size,
-        base64Length: dataBase64.length,
-      });
-      setAudioName(file.name);
-      setAudioMimeType(file.type || "audio/mpeg");
-      setAudioSize(file.size);
-      setAudioDataBase64(dataBase64);
-      setAudioError("");
-    } catch (error) {
-      console.error("[audio] Failed to read audio file", { name: file.name, error });
-      audioInput.value = "";
-      setAudioName("");
-      setAudioMimeType("");
-      setAudioSize(0);
-      setAudioDataBase64("");
-      setAudioError(formText.spreadsheetError);
     }
   }
 
@@ -1064,6 +1139,39 @@ export default function App() {
               ))}
             </div>
 
+            <aside className="service-summary" aria-label={serviceSummaryText.title}>
+              <div className="service-summary-heading">
+                <strong>{serviceSummaryText.title}</strong>
+                <span>{serviceSummaryText.note}</span>
+              </div>
+              <div className="plan-grid">
+                {serviceSummaryText.plans.map((plan) => (
+                  <article className="plan-card" key={plan.name}>
+                    <em>{plan.badge}</em>
+                    <span>{plan.name}</span>
+                    <b>{plan.price}</b>
+                    <small>{plan.detail}</small>
+                  </article>
+                ))}
+              </div>
+              <div className="youtube-info">
+                <div className="youtube-icon" aria-hidden="true">
+                  <span />
+                </div>
+                <div className="youtube-info-copy">
+                  <strong className="youtube-info-title">{serviceSummaryText.youtubeTitle}</strong>
+                  <p>{serviceSummaryText.youtubeCopy}</p>
+                  <div>
+                    {serviceSummaryText.youtubeSteps.map((step) => (
+                      <span key={step}>{step}</span>
+                    ))}
+                  </div>
+                </div>
+                <a href={youtubeChannelUrl} target="_blank" rel="noreferrer">
+                  {serviceSummaryText.youtubeLink}
+                </a>
+              </div>
+            </aside>
 
           </div>
 
@@ -1095,7 +1203,7 @@ export default function App() {
                 <div className="phone-input-group">
                   <CountrySelect
                     value={selectedCountryCode}
-                    onChange={setSelectedCountryCode}
+                    onChange={handleSenderCountryChange}
                   />
                   <input
                     name="phone"
@@ -1115,21 +1223,9 @@ export default function App() {
                 <textarea name="badNews" placeholder={formText.messagePlaceholder} required />
               </label>
 
-              <label className="file-inline">
-                <input
-                  name="audio"
-                  type="file"
-                  accept="audio/*"
-                  onChange={handleAudioChange}
-                />
-                <span>
-                  <Icon name="upload" /> {audioError || audioName || formText.audioUpload}
-                </span>
-              </label>
-
               <label>
                 <span>
-                  <Icon name="user" /> {formText.receiver}
+                  <Icon name="user" /> {formText.receiverPhone}
                 </span>
                 <div className="phone-input-group">
                   <CountrySelect
@@ -1147,21 +1243,49 @@ export default function App() {
                 </div>
               </label>
 
+              <label>
+                <span>
+                  <Icon name="card" /> {formText.serviceTier}
+                </span>
+                <select className="form-select" name="paymentOption" value={paymentOptionId} onChange={(event) => handlePaymentOptionChange(event.target.value as PaymentOptionId)}>
+                  {(Object.keys(paymentOptions) as PaymentOptionId[]).map((optionId) => (
+                    <option value={optionId} key={optionId}>
+                      {paymentOptionText[optionId]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <div className="account-box">
                 <Icon name="bank" />
                 <div>
-                  <b>{formText.basePrice}</b>
-                  <strong>{formText.accountNo}</strong>
-                  <span>{formText.accountName}</span>
+                  <strong>{formText.paymentDetails}</strong>
+                  <b>{selectedPrice} {selectedCurrency}</b>
+                  {isAbroadPayment ? (
+                    <>
+                      <span>{paypalDisplayName}</span>
+                      <span>PayPal address: {paypalUsername}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{formText.accountNo}</span>
+                      <span>{formText.accountName}</span>
+                    </>
+                  )}
                 </div>
               </div>
 
               <label>
                 <span>
-                  <Icon name="receipt" /> {formText.paymentAmount}
+                  <Icon name="bolt" /> {formText.specialRequestAmount}
                 </span>
-                <input name="paymentAmount" type="number" min={basePriceBirr} step="1" placeholder={formText.paymentAmountPlaceholder} required />
+                <input name="specialRequestAmount" type="number" min="0" step="1" placeholder={formText.specialRequestAmountPlaceholder} />
               </label>
+
+              <div className="notice-box">
+                <strong>{formText.youtubeNoticeTitle}</strong>
+                <span>{formText.youtubeNotice}</span>
+              </div>
 
               <label className="receipt-upload">
                 <input
@@ -1187,7 +1311,7 @@ export default function App() {
                 </span>
               </label>
 
-              <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || Boolean(audioError) || isRecording}>
+              <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || isRecording}>
                 <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}
               </button>
               {submitted && <output className="form-success">{formText.success}</output>}
@@ -1219,41 +1343,6 @@ export default function App() {
           </div>
         </section>
 
-        <section id="about-us" className="trust-section" aria-labelledby="trust-title">
-          <div className="section-heading">
-            <h2 id="trust-title">{trustText.title}</h2>
-            <p>{trustText.intro}</p>
-          </div>
-          <div className="trust-grid">
-            {trustText.items.map((item) => (
-              <article className="trust-card" key={item.title}>
-                <span className="round-icon">
-                  <Icon name={item.icon} />
-                </span>
-                <div>
-                  <h3>{item.title}</h3>
-                  <p>{item.copy}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="reviews" className="reviews-section" aria-labelledby="reviews-title">
-          <div className="section-heading">
-            <h2 id="reviews-title">{reviewText.title}</h2>
-            <p>{reviewText.intro}</p>
-          </div>
-          <div className="reviews-grid">
-            {reviewText.items.map((item) => (
-              <article className="review-card" key={item.author}>
-                <p>"{item.quote}"</p>
-                <strong>{item.author}</strong>
-              </article>
-            ))}
-          </div>
-        </section>
-
         <section id="faq" className="faq-section" aria-labelledby="faq-title">
           <div className="faq-copy">
             <h2 id="faq-title">{text.faqTitle}</h2>
@@ -1274,11 +1363,14 @@ export default function App() {
       <footer className="site-footer">
         <div className="footer-brand">
           <img src="/brand/johnny-logo.png" alt="" />
-          <p>{text.footerCopy}</p>
+          <p className="footer-logo-title">
+            <strong>ጆኒ</strong>
+            <small>መርዶ</small>
+          </p>
         </div>
         <div>
           <strong>{text.contactTitle}</strong>
-          <span>+251 9XX XXX XXX</span>
+          <span>+251 910474723</span>
           <span>info@johnbadnews.com</span>
           <span>Addis Ababa, Ethiopia</span>
           <span>{text.hours}</span>
