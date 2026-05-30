@@ -1096,6 +1096,35 @@ export default function App() {
         return;
       }
 
+      console.info("[receipt] CBE receipt URL found. Running text OCR verification before submission...");
+      const receiptText = await readReceiptTextWithOcr(file);
+      const lowerText = receiptText.toLowerCase();
+      const refMatch = receiptText.match(/\b(FT[A-Za-z0-9]{8,18})\b/i);
+      const reference = refMatch?.[1] || "";
+      const hasReceiverName = lowerText.includes("fraol") || lowerText.includes("eshetu");
+      const hasAccount = receiptText.includes("8583") || receiptText.replace(/\D/g, "").includes("1000239878583");
+
+      if (reference && (hasReceiverName || hasAccount)) {
+        console.info("[receipt] CBE screenshot OCR verification successful. Submitting OCR reference instead of page URL.", {
+          reference,
+          hasReceiverName,
+          hasAccount,
+          cbeReceiptUrl: extractedUrl,
+        });
+        setReceiptName(file.name);
+        setCbeReceiptUrl(`ocr:${reference.toUpperCase()}`);
+        setReceiptError("");
+        return;
+      }
+
+      console.warn("[receipt] CBE URL was found, but screenshot OCR could not verify the expected details. Submitting URL for server verification.", {
+        name: file.name,
+        hasReference: Boolean(reference),
+        hasReceiverName,
+        hasAccount,
+        textPreview: receiptText.slice(0, 240),
+      });
+
       console.info("[receipt] CBE receipt URL accepted", {
         name: file.name,
         cbeReceiptUrl: extractedUrl,
