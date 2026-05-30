@@ -138,10 +138,26 @@ function verifyCbeReceipt(data, receivedAt) {
   const text = normalizeReceiptText(response.getContentText());
   const amount = extractAmount(text);
   const paymentDate = extractPaymentDate(text);
-  const receiver = cleanReceiptField(extractField(text, /Receiver:\s*\n?\s*([^\n]+)/i));
+  const receiver = cleanReceiptField(extractReceiver(text));
   const receiverAccount = cleanReceiptField(extractReceiverAccount(text));
   const payer = cleanReceiptField(extractField(text, /Payer:\s*\n?\s*([^\n]+)/i));
   const reference = cleanReceiptField(extractReference(text));
+  const parsedAnyReceiptField = Boolean(amount || paymentDate || receiver || receiverAccount || reference);
+
+  if (!parsedAnyReceiptField) {
+    return {
+      ok: false,
+      errors: [
+        "Could not read the CBE receipt details from the receipt page. Open the receipt link and make sure it is a valid CBE receipt page, not an expired, private, or changed page.",
+      ],
+      amount,
+      paymentDate,
+      receiver,
+      receiverAccount,
+      payer,
+      reference,
+    };
+  }
 
   if (!amount || amount < BASE_PRICE_BIRR) {
     errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
@@ -273,6 +289,11 @@ function extractAmount(text) {
     /Transaction Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)/i,
     /Amount Paid:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)/i,
     /Amount:\s*\n?\s*ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /Transferred Amount:\s*\n?\s*ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /Transaction Amount:\s*\n?\s*ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /Amount Paid:\s*\n?\s*ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /([0-9,]+(?:\.\d{1,2})?)\s*(?:Birr|Br)\b/i,
   ];
   for (const pattern of patterns) {
     const amountText = extractField(text, pattern);
@@ -283,8 +304,8 @@ function extractAmount(text) {
       }
     }
   }
-  // Fallback to match any decimal/integer followed by ETB
-  const fallbackMatch = text.match(/([0-9,]+(?:\.\d{1,2})?)\s*ETB/i);
+  // Fallback to match any decimal/integer near common currency markers.
+  const fallbackMatch = text.match(/(?:ETB\s*)?([0-9,]+(?:\.\d{1,2})?)\s*(?:ETB|Birr|Br)\b/i);
   if (fallbackMatch) {
     return Number(fallbackMatch[1].replace(/,/g, ""));
   }
@@ -303,7 +324,7 @@ function extractPaymentDate(text) {
   for (const pattern of patterns) {
     const dateText = extractField(text, pattern);
     if (dateText) {
-      const parsed = new Date(dateText.trim());
+      const parsed = parseReceiptDate(dateText);
       if (!Number.isNaN(parsed.getTime())) {
         return parsed;
       }
@@ -312,13 +333,73 @@ function extractPaymentDate(text) {
   return null;
 }
 
+function parseReceiptDate(value) {
+  const dateText = String(value || "").trim();
+  const parsed = new Date(dateText);
+
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const dateTimeMatch = dateText.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
+
+  if (!dateTimeMatch) {
+    return new Date(NaN);
+  }
+
+  let day = Number(dateTimeMatch[1]);
+  let month = Number(dateTimeMatch[2]);
+  const year = Number(dateTimeMatch[3]);
+  let hour = Number(dateTimeMatch[4] || 0);
+  const minute = Number(dateTimeMatch[5] || 0);
+  const second = Number(dateTimeMatch[6] || 0);
+  const meridiem = String(dateTimeMatch[7] || "").toUpperCase();
+
+  if (month > 12 && day <= 12) {
+    const originalDay = day;
+    day = month;
+    month = originalDay;
+  }
+
+  if (meridiem === "PM" && hour < 12) {
+    hour += 12;
+  } else if (meridiem === "AM" && hour === 12) {
+    hour = 0;
+  }
+
+  return new Date(year, month - 1, day, hour, minute, second);
+}
+
+function extractReceiver(text) {
+  const patterns = [
+    /Receiver(?: Name)?:\s*\n?\s*([^\n]+)/i,
+    /Credited Party Name:\s*\n?\s*([^\n]+)/i,
+    /Beneficiary(?: Name)?:\s*\n?\s*([^\n]+)/i,
+    /Transfer To:\s*\n?\s*([^\n]+)/i,
+    /To:\s*\n?\s*([^\n]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const receiver = extractField(text, pattern);
+    if (receiver) {
+      return receiver;
+    }
+  }
+
+  const expectedNamePattern = new RegExp(EXPECTED_RECEIVER_NAME.replace(/\s+/g, "\\s+"), "i");
+  const expectedNameMatch = text.match(expectedNamePattern);
+  return expectedNameMatch ? expectedNameMatch[0] : "";
+}
+
 function extractReceiverAccount(text) {
   const patterns = [
-    /Receiver Account:\s*\n?\s*([0-9]+)/i,
-    /Receiver:[\s\S]*?Account:\s*\n?\s*([0-9]+)/i,
-    /Transfer To Account:\s*\n?\s*([0-9]+)/i,
-    /Credit Account:\s*\n?\s*([0-9]+)/i,
-    /Account:\s*\n?\s*([0-9]+)/i,
+    /Receiver Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /Receiver:[\s\S]*?Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /Transfer To Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /Credit Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /Credited Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /Beneficiary Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
   ];
   for (const pattern of patterns) {
     const acc = extractField(text, pattern);
@@ -343,8 +424,11 @@ function extractReference(text) {
   const patterns = [
     /Reference No\.?\s*(?:\(VAT Invoice No\.\))?:\s*\n?\s*([A-Za-z0-9-]+)/i,
     /Reference Number:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Transaction Reference(?: Number)?:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Reference:\s*\n?\s*([A-Za-z0-9-]+)/i,
     /Transaction No\.?:\s*\n?\s*([A-Za-z0-9-]+)/i,
     /Transaction ID:\s*\n?\s*([A-Za-z0-9-]+)/i,
+    /Payment Reference:\s*\n?\s*([A-Za-z0-9-]+)/i,
     /Ref No\.?:\s*\n?\s*([A-Za-z0-9-]+)/i,
     /Ref\.?:\s*\n?\s*([A-Za-z0-9-]+)/i,
   ];
