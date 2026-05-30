@@ -170,17 +170,25 @@ function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
     };
   }
   const statusCode = response.getResponseCode();
+  const responseText = response.getContentText() || "";
 
   if (statusCode < 200 || statusCode >= 300) {
+    const apiErrorMessage = extractCbeApiErrorMessage(responseText);
+    const invalidTokenMessage = apiErrorMessage.toLowerCase().indexOf("invalid or tampered token") !== -1;
+
     return {
       ok: false,
-      errors: [`CBE transaction API returned HTTP ${statusCode}. Check that the receipt link is valid. (${WEBHOOK_VERSION})`],
+      errors: [
+        invalidTokenMessage
+          ? `CBE rejected this receipt link as invalid or tampered. Please upload the original, clear CBE receipt screenshot again. (${WEBHOOK_VERSION})`
+          : `CBE transaction API returned HTTP ${statusCode}${apiErrorMessage ? `: ${apiErrorMessage}` : ""}. Check that the receipt link is valid. (${WEBHOOK_VERSION})`,
+      ],
     };
   }
 
   let transaction;
   try {
-    transaction = JSON.parse(response.getContentText() || "{}");
+    transaction = JSON.parse(responseText || "{}");
   } catch (error) {
     return {
       ok: false,
@@ -196,6 +204,15 @@ function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
   }
 
   return buildCbeVerificationFromTransaction(transaction, receivedAt);
+}
+
+function extractCbeApiErrorMessage(responseText) {
+  try {
+    const payload = JSON.parse(responseText || "{}");
+    return cleanCell(payload.detail || payload.message || payload.title || "");
+  } catch (error) {
+    return "";
+  }
 }
 
 function buildCbeVerificationFromTransaction(transaction, receivedAt) {

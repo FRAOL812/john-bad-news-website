@@ -204,12 +204,27 @@ async function readReceiptUrlWithJsQr(file: File) {
     const imageWidth = image.naturalWidth || image.width;
     const imageHeight = image.naturalHeight || image.height;
     const rotations = [0, 90, 180, 270];
+    const scanRegions = [
+      { name: "full", x: 0, y: 0, width: imageWidth, height: imageHeight },
+      { name: "top", x: 0, y: 0, width: imageWidth, height: imageHeight / 2 },
+      { name: "bottom", x: 0, y: imageHeight / 2, width: imageWidth, height: imageHeight / 2 },
+      { name: "left", x: 0, y: 0, width: imageWidth / 2, height: imageHeight },
+      { name: "right", x: imageWidth / 2, y: 0, width: imageWidth / 2, height: imageHeight },
+      { name: "top-left", x: 0, y: 0, width: imageWidth / 2, height: imageHeight / 2 },
+      { name: "top-right", x: imageWidth / 2, y: 0, width: imageWidth / 2, height: imageHeight / 2 },
+      { name: "bottom-left", x: 0, y: imageHeight / 2, width: imageWidth / 2, height: imageHeight / 2 },
+      { name: "bottom-right", x: imageWidth / 2, y: imageHeight / 2, width: imageWidth / 2, height: imageHeight / 2 },
+    ];
 
-    for (const rotation of rotations) {
+    for (const region of scanRegions) {
+      for (const rotation of rotations) {
       const canvas = document.createElement("canvas");
       const isSideways = rotation === 90 || rotation === 270;
-      canvas.width = isSideways ? imageHeight : imageWidth;
-      canvas.height = isSideways ? imageWidth : imageHeight;
+        const scale = Math.min(3, Math.max(1, 900 / Math.max(region.width, region.height)));
+        const drawnWidth = region.width * scale;
+        const drawnHeight = region.height * scale;
+        canvas.width = Math.round(isSideways ? drawnHeight : drawnWidth);
+        canvas.height = Math.round(isSideways ? drawnWidth : drawnHeight);
 
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context || !canvas.width || !canvas.height) {
@@ -218,14 +233,35 @@ async function readReceiptUrlWithJsQr(file: File) {
 
       context.translate(canvas.width / 2, canvas.height / 2);
       context.rotate((rotation * Math.PI) / 180);
-      context.drawImage(image, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+        context.drawImage(
+          image,
+          region.x,
+          region.y,
+          region.width,
+          region.height,
+          -drawnWidth / 2,
+          -drawnHeight / 2,
+          drawnWidth,
+          drawnHeight,
+        );
 
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
+        let code = jsQR(imageData.data, imageData.width, imageData.height);
+
+        if (!code) {
+          for (let index = 0; index < imageData.data.length; index += 4) {
+            imageData.data[index] = 255 - imageData.data[index];
+            imageData.data[index + 1] = 255 - imageData.data[index + 1];
+            imageData.data[index + 2] = 255 - imageData.data[index + 2];
+          }
+          code = jsQR(imageData.data, imageData.width, imageData.height);
+        }
+
       const rawValue = code?.data ?? "";
       const cbeReceiptUrl = getCbeReceiptUrl(rawValue);
 
       console.info("[receipt] jsQR scan attempt completed", {
+          region: region.name,
         rotation,
         rawValue,
         cbeReceiptUrl,
@@ -236,6 +272,7 @@ async function readReceiptUrlWithJsQr(file: File) {
       if (cbeReceiptUrl) {
         return cbeReceiptUrl;
       }
+    }
     }
 
     return "";
