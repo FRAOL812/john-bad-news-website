@@ -79,6 +79,7 @@ const paypalUsername = "@YonatanWoldegiorgis9";
 const youtubeChannelUrl = "https://www.youtube.com/";
 const maxReceiptSize = 5 * 1024 * 1024;
 const cbeReceiptBaseUrl = "https://mbreciept.cbe.com.et/";
+const cbeLegacyReceiptBaseUrl = "https://apps.cbe.com.et:100/";
 const acceptedReceiptTypes = ["image/jpeg", "image/png"];
 const acceptedReceiptExtensions = [".jpg", ".jpeg", ".png"];
 
@@ -128,14 +129,26 @@ function getCbeReceiptUrl(value: string) {
     .replace(/\s*\.\s*/g, ".")
     .replace(/\s*\/\s*/g, "/")
     .replace(/\s*:\s*/g, ":")
+    .replace(/\s*\?\s*/g, "?")
+    .replace(/\s*&\s*/g, "&")
+    .replace(/\s*=\s*/g, "=")
     .replace(/\s+/g, "");
   const normalizedValue = compactValue
     .replace(/mb\s*receipt/gi, "mbreciept")
     .replace(/mbreceipt/gi, "mbreciept")
     .replace(/mbrec[e3]ipt/gi, "mbreciept")
     .replace(/cbe\.com\.et/gi, "cbe.com.et");
-  const match = normalizedValue.match(/(?:https?:\/\/)?mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)/i);
-  return match ? `${cbeReceiptBaseUrl}${match[1]}` : "";
+  const match = normalizedValue.match(/(?:https?:\/\/)?(mbreciept\.cbe\.com\.et|apps\.cbe\.com\.et:100)\/?([A-Za-z0-9._~%+=-]*(?:\?[A-Za-z0-9._~%!$&'()*+,;=:@/?-]*)?)/i);
+  const receiptPath = match ? match[2].replace(/[),.;]+$/g, "") : "";
+  if (!match || !receiptPath) {
+    return "";
+  }
+  return `${match[1].toLowerCase() === "apps.cbe.com.et:100" ? cbeLegacyReceiptBaseUrl : cbeReceiptBaseUrl}${receiptPath}`;
+}
+
+function isCbeReceiptUrl(value: string) {
+  const lowerValue = value.toLowerCase();
+  return lowerValue.startsWith(cbeReceiptBaseUrl) || lowerValue.startsWith(cbeLegacyReceiptBaseUrl);
 }
 
 function readFileAsBase64(file: File) {
@@ -1105,12 +1118,12 @@ export default function App() {
         console.warn("[receipt] Primary scan failed, falling back to text OCR scan", err);
       }
 
-      if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
+      if (!isCbeReceiptUrl(extractedUrl)) {
         console.info("[receipt] QR/URL scan did not yield a valid CBE receipt URL. Running full text OCR fallback...");
         const receiptText = await readReceiptTextWithOcr(file);
         extractedUrl = getCbeReceiptUrl(receiptText);
 
-        if (extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
+        if (isCbeReceiptUrl(extractedUrl)) {
           console.info("[receipt] CBE receipt URL extracted from OCR text", {
             name: file.name,
             cbeReceiptUrl: extractedUrl,

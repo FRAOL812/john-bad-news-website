@@ -2,12 +2,13 @@ const VERIFIED_SHEET_NAME = "Received News";
 const REJECTED_SHEET_NAME = "Rejected Payments";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-05-31-cbe-api-60min";
+const WEBHOOK_VERSION = "2026-05-31-cbe-user-web-token";
 const BASE_PRICE_BIRR = 500;
 const PAYMENT_WINDOW_MINUTES = 60;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
+const CBE_LEGACY_RECEIPT_BASE_URL = "https://apps.cbe.com.et:100/";
 const CBE_TRANSACTION_API_BASE_URL = "https://Mb.cbe.com.et/api/v1/transactions/public/transaction-detail/";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
 const MAX_RECEIPT_FIELD_LENGTH = 140;
@@ -40,6 +41,10 @@ const REQUEST_HEADERS = [
 
 function setupAuthorization() {
   UrlFetchApp.fetch(CBE_RECEIPT_BASE_URL, {
+    muteHttpExceptions: true,
+    followRedirects: true,
+  });
+  UrlFetchApp.fetch(CBE_LEGACY_RECEIPT_BASE_URL, {
     muteHttpExceptions: true,
     followRedirects: true,
   });
@@ -132,7 +137,7 @@ function verifyCbeReceipt(data, receivedAt) {
 
   const url = normalizeCbeReceiptUrl(receiptUrl);
 
-  if (!url.toLowerCase().startsWith(CBE_RECEIPT_BASE_URL)) {
+  if (!isCbeReceiptUrl(url)) {
     return { ok: false, errors: ["Missing or invalid CBE receipt URL"] };
   }
 
@@ -145,21 +150,21 @@ function verifyCbeReceipt(data, receivedAt) {
 }
 
 function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
-  const receiptId = extractCbeReceiptId(receiptUrl);
+  const receiptToken = extractCbeReceiptToken(receiptUrl);
 
-  if (!receiptId) {
+  if (!receiptToken) {
     return {
       ok: false,
-      errors: [`CBE receipt link is missing the receipt ID (${WEBHOOK_VERSION})`],
+      errors: [`CBE receipt link is missing the receipt token (${WEBHOOK_VERSION})`],
     };
   }
 
-  const apiUrl = `${CBE_TRANSACTION_API_BASE_URL}${encodeURIComponent(receiptId)}`;
+  const apiUrl = buildCbeTransactionApiUrl(receiptUrl, receiptToken);
   let response;
   try {
     response = UrlFetchApp.fetch(apiUrl, {
       method: "get",
-      headers: CBE_TRANSACTION_API_HEADERS,
+      headers: buildCbeTransactionApiHeaders(receiptUrl),
       muteHttpExceptions: true,
       followRedirects: true,
     });
@@ -264,10 +269,77 @@ function buildCbeVerificationFromTransaction(transaction, receivedAt) {
   };
 }
 
-function extractCbeReceiptId(receiptUrl) {
+function extractCbeReceiptToken(receiptUrl) {
   const normalizedUrl = normalizeCbeReceiptUrl(receiptUrl);
-  const match = normalizedUrl.match(/^https?:\/\/mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)$/i);
-  return match ? match[1] : "";
+  const queryToken = extractCbeReceiptQueryToken(normalizedUrl);
+  if (queryToken) {
+    return queryToken;
+  }
+
+  const match = normalizedUrl.match(/^https?:\/\/(?:mbreciept\.cbe\.com\.et|apps\.cbe\.com\.et:100)\/?([^?#/]+)/i);
+  return match ? safeDecodeURIComponent(match[1]) : "";
+}
+
+function extractCbeReceiptQueryToken(receiptUrl) {
+  const queryString = extractCbeReceiptQueryString(receiptUrl);
+  if (!queryString) {
+    return "";
+  }
+
+  const tokenKeys = ["token", "webToken", "web_token", "accessToken", "access_token", "id", "receiptId", "receipt_id"];
+  const pairs = queryString.split("&");
+  for (let keyIndex = 0; keyIndex < tokenKeys.length; keyIndex += 1) {
+    const expectedKey = tokenKeys[keyIndex].toLowerCase();
+    for (let pairIndex = 0; pairIndex < pairs.length; pairIndex += 1) {
+      const pair = pairs[pairIndex];
+      const equalsIndex = pair.indexOf("=");
+      const rawKey = equalsIndex === -1 ? pair : pair.substring(0, equalsIndex);
+      const rawValue = equalsIndex === -1 ? "" : pair.substring(equalsIndex + 1);
+      if (safeDecodeURIComponent(rawKey).toLowerCase() === expectedKey && rawValue) {
+        return safeDecodeURIComponent(rawValue);
+      }
+    }
+  }
+
+  return "";
+}
+
+function buildCbeTransactionApiUrl(receiptUrl, receiptToken) {
+  const queryString = extractCbeReceiptQueryString(receiptUrl);
+  const baseApiUrl = `${CBE_TRANSACTION_API_BASE_URL}${encodeURIComponent(receiptToken)}`;
+  return queryString ? `${baseApiUrl}?${queryString}` : baseApiUrl;
+}
+
+function buildCbeTransactionApiHeaders(receiptUrl) {
+  const origin = getCbeReceiptOrigin(receiptUrl);
+  return Object.assign({}, CBE_TRANSACTION_API_HEADERS, {
+    Origin: origin,
+    Referer: normalizeCbeReceiptUrl(receiptUrl),
+  });
+}
+
+function extractCbeReceiptQueryString(receiptUrl) {
+  const match = String(receiptUrl || "").trim().match(/^https?:\/\/(?:mbreciept\.cbe\.com\.et|apps\.cbe\.com\.et:100)\/?[^?#]*(?:\?([^#]+))?/i);
+  return match && match[1] ? match[1] : "";
+}
+
+function getCbeReceiptOrigin(receiptUrl) {
+  return String(receiptUrl || "").toLowerCase().indexOf("apps.cbe.com.et:100") !== -1
+    ? "https://apps.cbe.com.et:100"
+    : "https://mbreciept.cbe.com.et";
+}
+
+function isCbeReceiptUrl(receiptUrl) {
+  const lowerUrl = String(receiptUrl || "").toLowerCase();
+  return lowerUrl.startsWith(CBE_RECEIPT_BASE_URL) || lowerUrl.startsWith(CBE_LEGACY_RECEIPT_BASE_URL);
+}
+
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(String(value || "").replace(/\+/g, " "));
+  } catch (error) {
+    return String(value || "");
+  }
 }
 
 function parseReceiptNumber(value) {
@@ -328,13 +400,18 @@ function verifyPaypalReceipt(data) {
 
 function normalizeCbeReceiptUrl(receiptUrl) {
   let url = String(receiptUrl || "").trim();
-  // Strip query parameters and hashes (e.g. ?lang=en, #ref)
-  url = url.split("?")[0].split("#")[0];
+  // Strip hashes, but preserve CBE query tokens because the public API validates them.
+  url = url.split("#")[0];
   // Strip trailing slashes
   url = url.replace(/\/+$/, "");
 
-  const match = url.match(/^https?:\/\/mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)$/i);
-  return match ? `${CBE_RECEIPT_BASE_URL}${match[1]}` : url;
+  const match = url.match(/^https?:\/\/(mbreciept\.cbe\.com\.et|apps\.cbe\.com\.et:100)\/?([^?#/]*)(\?[^#]*)?$/i);
+  if (!match) {
+    return url;
+  }
+
+  const baseUrl = match[1].toLowerCase() === "apps.cbe.com.et:100" ? CBE_LEGACY_RECEIPT_BASE_URL : CBE_RECEIPT_BASE_URL;
+  return `${baseUrl}${match[2]}${match[3] || ""}`;
 }
 
 function normalizeReceiptText(html) {
