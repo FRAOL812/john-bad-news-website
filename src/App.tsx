@@ -124,9 +124,18 @@ function getSpreadsheetWebhookUrl() {
 }
 
 function getCbeReceiptUrl(value: string) {
-  const normalizedValue = value.replace(/\s*\.\s*/g, ".").replace(/\s+/g, "");
-  const match = normalizedValue.match(/https?:\/\/mbreciept\.cbe\.com\.et\/[A-Za-z0-9-]+/i);
-  return match?.[0] ?? "";
+  const compactValue = value
+    .replace(/\s*\.\s*/g, ".")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s*:\s*/g, ":")
+    .replace(/\s+/g, "");
+  const normalizedValue = compactValue
+    .replace(/mb\s*receipt/gi, "mbreciept")
+    .replace(/mbreceipt/gi, "mbreciept")
+    .replace(/mbrec[e3]ipt/gi, "mbreciept")
+    .replace(/cbe\.com\.et/gi, "cbe.com.et");
+  const match = normalizedValue.match(/(?:https?:\/\/)?mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)/i);
+  return match ? `${cbeReceiptBaseUrl}${match[1]}` : "";
 }
 
 function readFileAsBase64(file: File) {
@@ -1062,68 +1071,27 @@ export default function App() {
       if (!extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
         console.info("[receipt] QR/URL scan did not yield a valid CBE receipt URL. Running full text OCR fallback...");
         const receiptText = await readReceiptTextWithOcr(file);
-        const lowerText = receiptText.toLowerCase();
+        extractedUrl = getCbeReceiptUrl(receiptText);
 
-        // 1. Reference check: CBE transaction reference format (starts with FT)
-        const refMatch = receiptText.match(/\b(FT[A-Za-z0-9]{8,18})\b/i);
-        const reference = refMatch?.[1] || "";
-
-        // 2. Receiver check: expected receiver name or account suffix "8583"
-        const hasReceiverName = lowerText.includes("fraol") || lowerText.includes("eshetu");
-        const hasAccount = receiptText.includes("8583") || receiptText.replace(/\D/g, "").includes("1000239878583");
-
-        if (reference && (hasReceiverName || hasAccount)) {
-          console.info("[receipt] Client-side OCR verification successful!", {
-            reference,
-            hasReceiverName,
-            hasAccount
+        if (extractedUrl.toLowerCase().startsWith(cbeReceiptBaseUrl)) {
+          console.info("[receipt] CBE receipt URL extracted from OCR text", {
+            name: file.name,
+            cbeReceiptUrl: extractedUrl,
           });
           setReceiptName(file.name);
-          setCbeReceiptUrl(`ocr:${reference.toUpperCase()}`);
+          setCbeReceiptUrl(extractedUrl);
           setReceiptError("");
           return;
         }
 
-        console.warn("[receipt] Text OCR fallback failed to verify CBE receipt details", {
+        console.warn("[receipt] Text OCR fallback failed to extract a CBE receipt link", {
           name: file.name,
-          hasReference: Boolean(reference),
-          hasReceiverName,
-          hasAccount,
           textPreview: receiptText.slice(0, 240)
         });
         setCbeReceiptUrl("");
         setReceiptError(formText.receiptQrMissing);
         return;
       }
-
-      console.info("[receipt] CBE receipt URL found. Running text OCR verification before submission...");
-      const receiptText = await readReceiptTextWithOcr(file);
-      const lowerText = receiptText.toLowerCase();
-      const refMatch = receiptText.match(/\b(FT[A-Za-z0-9]{8,18})\b/i);
-      const reference = refMatch?.[1] || "";
-      const hasReceiverName = lowerText.includes("fraol") || lowerText.includes("eshetu");
-      const hasAccount = receiptText.includes("8583") || receiptText.replace(/\D/g, "").includes("1000239878583");
-
-      if (reference && (hasReceiverName || hasAccount)) {
-        console.info("[receipt] CBE screenshot OCR verification successful. Submitting OCR reference instead of page URL.", {
-          reference,
-          hasReceiverName,
-          hasAccount,
-          cbeReceiptUrl: extractedUrl,
-        });
-        setReceiptName(file.name);
-        setCbeReceiptUrl(`ocr:${reference.toUpperCase()}`);
-        setReceiptError("");
-        return;
-      }
-
-      console.warn("[receipt] CBE URL was found, but screenshot OCR could not verify the expected details. Submitting URL for server verification.", {
-        name: file.name,
-        hasReference: Boolean(reference),
-        hasReceiverName,
-        hasAccount,
-        textPreview: receiptText.slice(0, 240),
-      });
 
       console.info("[receipt] CBE receipt URL accepted", {
         name: file.name,
