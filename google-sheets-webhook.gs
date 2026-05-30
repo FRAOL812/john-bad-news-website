@@ -2,6 +2,7 @@ const VERIFIED_SHEET_NAME = "Received News";
 const REJECTED_SHEET_NAME = "Rejected Payments";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
+const WEBHOOK_VERSION = "2026-05-31-cbe-api-60min";
 const BASE_PRICE_BIRR = 500;
 const PAYMENT_WINDOW_MINUTES = 60;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
@@ -39,6 +40,11 @@ const REQUEST_HEADERS = [
 
 function setupAuthorization() {
   UrlFetchApp.fetch(CBE_RECEIPT_BASE_URL, {
+    muteHttpExceptions: true,
+    followRedirects: true,
+  });
+  UrlFetchApp.fetch(`${CBE_TRANSACTION_API_BASE_URL}authorization-check`, {
+    headers: CBE_TRANSACTION_API_HEADERS,
     muteHttpExceptions: true,
     followRedirects: true,
   });
@@ -131,89 +137,21 @@ function verifyCbeReceipt(data, receivedAt) {
   }
 
   const apiVerification = verifyCbeReceiptFromApi(url, receivedAt);
-  if (apiVerification) {
+  if (!apiVerification.ok) {
     return apiVerification;
   }
 
-  const response = UrlFetchApp.fetch(url, {
-    muteHttpExceptions: true,
-    followRedirects: true,
-  });
-  const statusCode = response.getResponseCode();
-
-  if (statusCode < 200 || statusCode >= 300) {
-    return { ok: false, errors: [`CBE receipt page returned HTTP ${statusCode}`] };
-  }
-
-  const text = normalizeReceiptText(response.getContentText());
-  const amount = extractAmount(text);
-  const paymentDate = extractPaymentDate(text);
-  const receiver = cleanReceiptField(extractReceiver(text));
-  const receiverAccount = cleanReceiptField(extractReceiverAccount(text));
-  const payer = cleanReceiptField(extractField(text, /Payer:\s*\n?\s*([^\n]+)/i));
-  const reference = cleanReceiptField(extractReference(text));
-  const parsedAnyReceiptField = Boolean(amount || paymentDate || receiver || receiverAccount || reference);
-
-  if (!parsedAnyReceiptField) {
-    return {
-      ok: false,
-      errors: [
-        "Could not read the CBE receipt details from the receipt page. Open the receipt link and make sure it is a valid CBE receipt page, not an expired, private, or changed page.",
-      ],
-      amount,
-      paymentDate,
-      receiver,
-      receiverAccount,
-      payer,
-      reference,
-    };
-  }
-
-  if (!amount || amount < BASE_PRICE_BIRR) {
-    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
-  }
-
-  if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
-    errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
-  }
-
-  if (!receiverAccount || !receiverAccount.replace(/\D/g, "").endsWith(EXPECTED_RECEIVER_ACCOUNT_SUFFIX)) {
-    errors.push(`Receiver account does not end with ${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`);
-  }
-
-  if (!paymentDate) {
-    errors.push("Payment date/time not found");
-  } else {
-    const ageMs = receivedAt.getTime() - paymentDate.getTime();
-    if (ageMs < -5 * 60 * 1000) { // Tolerates up to 5 minutes of future clock skew
-      errors.push("Payment date/time is in the future");
-    }
-    if (ageMs > PAYMENT_WINDOW_MINUTES * 60 * 1000) {
-      errors.push(`Payment is older than ${PAYMENT_WINDOW_MINUTES} minutes`);
-    }
-  }
-
-  if (!reference) {
-    errors.push("Reference number not found");
-  }
-
-  return {
-    ok: errors.length === 0,
-    errors,
-    amount,
-    paymentDate,
-    receiver,
-    receiverAccount,
-    payer,
-    reference,
-  };
+  return apiVerification;
 }
 
 function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
   const receiptId = extractCbeReceiptId(receiptUrl);
 
   if (!receiptId) {
-    return null;
+    return {
+      ok: false,
+      errors: [`CBE receipt link is missing the receipt ID (${WEBHOOK_VERSION})`],
+    };
   }
 
   const apiUrl = `${CBE_TRANSACTION_API_BASE_URL}${encodeURIComponent(receiptId)}`;
@@ -226,23 +164,35 @@ function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
       followRedirects: true,
     });
   } catch (error) {
-    return null;
+    return {
+      ok: false,
+      errors: [`Could not reach the CBE transaction API. Try again in a moment. (${WEBHOOK_VERSION})`],
+    };
   }
   const statusCode = response.getResponseCode();
 
   if (statusCode < 200 || statusCode >= 300) {
-    return null;
+    return {
+      ok: false,
+      errors: [`CBE transaction API returned HTTP ${statusCode}. Check that the receipt link is valid. (${WEBHOOK_VERSION})`],
+    };
   }
 
   let transaction;
   try {
     transaction = JSON.parse(response.getContentText() || "{}");
   } catch (error) {
-    return null;
+    return {
+      ok: false,
+      errors: [`CBE transaction API returned unreadable data. Try again in a moment. (${WEBHOOK_VERSION})`],
+    };
   }
 
   if (!transaction || typeof transaction !== "object" || !transaction.id) {
-    return null;
+    return {
+      ok: false,
+      errors: [`CBE transaction details were not found for this receipt link. Check that the receipt link is valid. (${WEBHOOK_VERSION})`],
+    };
   }
 
   return buildCbeVerificationFromTransaction(transaction, receivedAt);
