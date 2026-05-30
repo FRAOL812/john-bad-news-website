@@ -2,13 +2,16 @@ const VERIFIED_SHEET_NAME = "Received News";
 const REJECTED_SHEET_NAME = "Rejected Payments";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-05-31-cbe-user-web-token";
+const WEBHOOK_VERSION = "2026-05-31-cbe-pdf-reference";
 const BASE_PRICE_BIRR = 500;
 const PAYMENT_WINDOW_MINUTES = 60;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
+const EXPECTED_RECEIVER_ACCOUNT_NUMBER = "1000239878583";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
+const EXPECTED_RECEIVER_ACCOUNT_LOOKUP_SUFFIX = EXPECTED_RECEIVER_ACCOUNT_NUMBER.substring(5);
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
 const CBE_LEGACY_RECEIPT_BASE_URL = "https://apps.cbe.com.et:100/";
+const CBE_PDF_VERIFICATION_BASE_URL = "https://apps.cbe.com.et:100";
 const CBE_TRANSACTION_API_BASE_URL = "https://Mb.cbe.com.et/api/v1/transactions/public/transaction-detail/";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
 const MAX_RECEIPT_FIELD_LENGTH = 140;
@@ -141,9 +144,14 @@ function verifyCbeReceipt(data, receivedAt) {
     return { ok: false, errors: ["Missing or invalid CBE receipt URL"] };
   }
 
+  const pdfVerification = verifyCbeReceiptFromPdf(url, receivedAt);
+  if (pdfVerification.ok) {
+    return pdfVerification;
+  }
+
   const apiVerification = verifyCbeReceiptFromApi(url, receivedAt);
   if (!apiVerification.ok) {
-    return apiVerification;
+    return mergeVerificationFailures(pdfVerification, apiVerification);
   }
 
   return apiVerification;
@@ -209,6 +217,191 @@ function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
   }
 
   return buildCbeVerificationFromTransaction(transaction, receivedAt);
+}
+
+function verifyCbeReceiptFromPdf(receiptUrl, receivedAt) {
+  try {
+    const reference = extractCbeReferenceFromReceiptUrl(receiptUrl);
+
+    if (!reference) {
+      return {
+        ok: false,
+        errors: [`CBE receipt link does not include an FT reference for PDF verification (${WEBHOOK_VERSION})`],
+      };
+    }
+
+    const verificationId = buildCbePdfVerificationId(reference);
+    const fetchResult = fetchCbePdfVerificationText(verificationId);
+
+    if (!fetchResult.ok) {
+      return fetchResult;
+    }
+
+    return buildCbeVerificationFromReceiptText(fetchResult.text, receivedAt, reference);
+  } catch (error) {
+    return {
+      ok: false,
+      errors: [`CBE PDF verification failed: ${String(error && error.message ? error.message : error)} (${WEBHOOK_VERSION})`],
+    };
+  }
+}
+
+function buildCbePdfVerificationId(reference) {
+  const cleanReference = cleanCbeReference(reference);
+  return `${cleanReference}${EXPECTED_RECEIVER_ACCOUNT_LOOKUP_SUFFIX}`;
+}
+
+function fetchCbePdfVerificationText(verificationId) {
+  const urls = [
+    `${CBE_PDF_VERIFICATION_BASE_URL}/${encodeURIComponent(verificationId)}`,
+    `${CBE_PDF_VERIFICATION_BASE_URL}/?id=${encodeURIComponent(verificationId)}`,
+  ];
+  const errors = [];
+
+  for (let index = 0; index < urls.length; index += 1) {
+    const url = urls[index];
+    let response;
+    try {
+      response = UrlFetchApp.fetch(url, {
+        method: "get",
+        muteHttpExceptions: true,
+        followRedirects: true,
+      });
+    } catch (error) {
+      errors.push(`Could not reach ${url}: ${String(error && error.message ? error.message : error)}`);
+      continue;
+    }
+
+    const statusCode = response.getResponseCode();
+    if (statusCode < 200 || statusCode >= 300) {
+      errors.push(`CBE PDF verification returned HTTP ${statusCode} for ${url}`);
+      continue;
+    }
+
+    const blob = response.getBlob();
+    const text = extractTextFromCbeVerificationResponse(blob, response.getContentText() || "", verificationId);
+    if (text) {
+      return { ok: true, errors: [], text };
+    }
+
+    errors.push(`CBE PDF verification returned unreadable receipt text for ${url}`);
+  }
+
+  return {
+    ok: false,
+    errors: errors.length ? errors : [`CBE PDF verification failed for ${verificationId} (${WEBHOOK_VERSION})`],
+  };
+}
+
+function extractTextFromCbeVerificationResponse(blob, responseText, verificationId) {
+  const contentType = String(blob.getContentType() || "").toLowerCase();
+  const textPreview = String(responseText || "").trim();
+
+  if (contentType.indexOf("pdf") === -1 && textPreview && textPreview.indexOf("%PDF") !== 0) {
+    return normalizeReceiptText(textPreview);
+  }
+
+  return extractTextFromPdfBlob(blob, verificationId);
+}
+
+function extractTextFromPdfBlob(blob, verificationId) {
+  if (typeof Drive === "undefined" || !Drive.Files || !Drive.Files.insert) {
+    throw new Error("Advanced Drive service is required for CBE PDF receipt OCR. Enable Drive API in Apps Script.");
+  }
+
+  const pdfName = `cbe-verification-${verificationId}.pdf`;
+  const pdfBlob = blob.setName(pdfName);
+  let convertedFile;
+
+  try {
+    convertedFile = Drive.Files.insert(
+      {
+        title: `cbe-verification-${verificationId}`,
+        mimeType: MimeType.GOOGLE_DOCS,
+      },
+      pdfBlob,
+      {
+        convert: true,
+        ocr: true,
+        ocrLanguage: "en",
+      },
+    );
+
+    const document = DocumentApp.openById(convertedFile.id);
+    return normalizeReceiptText(document.getBody().getText());
+  } finally {
+    if (convertedFile && convertedFile.id) {
+      try {
+        DriveApp.getFileById(convertedFile.id).setTrashed(true);
+      } catch (error) {
+        // Best effort cleanup only.
+      }
+    }
+  }
+}
+
+function buildCbeVerificationFromReceiptText(text, receivedAt, expectedReference) {
+  const amount = extractAmount(text);
+  const paymentDate = extractPaymentDate(text);
+  const receiver = cleanReceiptField(extractReceiver(text));
+  const receiverAccount = cleanReceiptField(extractReceiverAccount(text));
+  const payer = cleanReceiptField(extractPayer(text));
+  const reference = cleanCbeReference(extractReference(text)) || cleanCbeReference(expectedReference);
+  const errors = [];
+
+  if (!amount || amount < BASE_PRICE_BIRR) {
+    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
+  }
+
+  if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
+    errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
+  }
+
+  if (!receiverAccount || !receiverAccount.replace(/\D/g, "").endsWith(EXPECTED_RECEIVER_ACCOUNT_SUFFIX)) {
+    errors.push(`Receiver account does not end with ${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`);
+  }
+
+  if (!paymentDate) {
+    errors.push("Payment date/time not found");
+  } else {
+    const ageMs = receivedAt.getTime() - paymentDate.getTime();
+    if (ageMs < -5 * 60 * 1000) {
+      errors.push("Payment date/time is in the future");
+    }
+    if (ageMs > PAYMENT_WINDOW_MINUTES * 60 * 1000) {
+      errors.push(`Payment is older than ${PAYMENT_WINDOW_MINUTES} minutes`);
+    }
+  }
+
+  if (!reference) {
+    errors.push("Reference number not found");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    amount,
+    paymentDate,
+    receiver,
+    receiverAccount,
+    payer,
+    reference,
+  };
+}
+
+function mergeVerificationFailures(primary, secondary) {
+  return {
+    ok: false,
+    errors: []
+      .concat(primary && primary.errors ? primary.errors : [])
+      .concat(secondary && secondary.errors ? secondary.errors : []),
+    amount: primary.amount || secondary.amount || "",
+    paymentDate: primary.paymentDate || secondary.paymentDate || null,
+    receiver: primary.receiver || secondary.receiver || "",
+    receiverAccount: primary.receiverAccount || secondary.receiverAccount || "",
+    payer: primary.payer || secondary.payer || "",
+    reference: primary.reference || secondary.reference || "",
+  };
 }
 
 function extractCbeApiErrorMessage(responseText) {
@@ -278,6 +471,15 @@ function extractCbeReceiptToken(receiptUrl) {
 
   const match = normalizedUrl.match(/^https?:\/\/(?:mbreciept\.cbe\.com\.et|apps\.cbe\.com\.et:100)\/?([^?#/]+)/i);
   return match ? safeDecodeURIComponent(match[1]) : "";
+}
+
+function extractCbeReferenceFromReceiptUrl(receiptUrl) {
+  return cleanCbeReference(extractCbeReceiptToken(receiptUrl)) || cleanCbeReference(receiptUrl);
+}
+
+function cleanCbeReference(value) {
+  const match = String(value || "").match(/\b(FT[A-Za-z0-9]{10})\b/i);
+  return match ? match[1].toUpperCase() : "";
 }
 
 function extractCbeReceiptQueryToken(receiptUrl) {
@@ -457,6 +659,8 @@ function looksLikeSubmissionJson(value) {
 
 function extractAmount(text) {
   const patterns = [
+    /ETB\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /Amount\s+([0-9,]+(?:\.\d{1,2})?)\s*ETB/i,
     /Transferred Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)\s*ETB/i,
     /Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)\s*ETB/i,
     /Transaction Amount:\s*\n?\s*([0-9,]+(?:\.\d{1,2})?)/i,
@@ -487,6 +691,7 @@ function extractAmount(text) {
 
 function extractPaymentDate(text) {
   const patterns = [
+    /Payment Date\s+\w+\s+([A-Za-z]{3}\s+\d{1,2}\s+\d{4})/i,
     /Payment Date\s*&?\s*Time:\s*\n?\s*([^\n]+)/i,
     /Transaction Date\s*&?\s*Time:\s*\n?\s*([^\n]+)/i,
     /Payment Date:\s*\n?\s*([^\n]+)/i,
@@ -512,6 +717,24 @@ function parseReceiptDate(value) {
 
   if (!Number.isNaN(parsed.getTime())) {
     return parsed;
+  }
+
+  const monthNameMatch = dateText.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})\s+(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
+  if (monthNameMatch) {
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const month = monthNames.indexOf(monthNameMatch[1].substring(0, 3).toLowerCase());
+    if (month !== -1) {
+      let hour = Number(monthNameMatch[4] || 0);
+      const minute = Number(monthNameMatch[5] || 0);
+      const second = Number(monthNameMatch[6] || 0);
+      const meridiem = String(monthNameMatch[7] || "").toUpperCase();
+      if (meridiem === "PM" && hour < 12) {
+        hour += 12;
+      } else if (meridiem === "AM" && hour === 12) {
+        hour = 0;
+      }
+      return new Date(Number(monthNameMatch[3]), month, Number(monthNameMatch[2]), hour, minute, second);
+    }
   }
 
   const dateTimeMatch = dateText.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
@@ -545,6 +768,7 @@ function parseReceiptDate(value) {
 
 function extractReceiver(text) {
   const patterns = [
+    /Receiver\s+([A-Za-z]+(?:\s+[A-Za-z]+){1,3})/i,
     /Receiver(?: Name)?:\s*\n?\s*([^\n]+)/i,
     /Credited Party Name:\s*\n?\s*([^\n]+)/i,
     /Beneficiary(?: Name)?:\s*\n?\s*([^\n]+)/i,
@@ -566,6 +790,7 @@ function extractReceiver(text) {
 
 function extractReceiverAccount(text) {
   const patterns = [
+    /Receiver\s+[A-Za-z]+(?:\s+[A-Za-z]+){1,3}\s*Account\s*([0-9*Xx\s-]+)/i,
     /Receiver Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
     /Receiver:[\s\S]*?Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
     /Transfer To Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
@@ -590,6 +815,26 @@ function extractReceiverAccount(text) {
       return matching;
     }
   }
+  return "";
+}
+
+function extractPayer(text) {
+  const patterns = [
+    /Payer(?: Name)?:\s*\n?\s*([^\n]+)/i,
+    /Payer\s+([A-Za-z]+(?:\s+[A-Za-z]+){1,3})/i,
+    /Debited Party Name:\s*\n?\s*([^\n]+)/i,
+    /Sender(?: Name)?:\s*\n?\s*([^\n]+)/i,
+    /Transfer From:\s*\n?\s*([^\n]+)/i,
+    /From:\s*\n?\s*([^\n]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const payer = extractField(text, pattern);
+    if (payer) {
+      return payer;
+    }
+  }
+
   return "";
 }
 
