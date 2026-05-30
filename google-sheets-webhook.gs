@@ -7,9 +7,14 @@ const PAYMENT_WINDOW_MINUTES = 20;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
 const CBE_RECEIPT_BASE_URL = "https://mbreciept.cbe.com.et/";
+const CBE_TRANSACTION_API_BASE_URL = "https://Mb.cbe.com.et/api/v1/transactions/public/transaction-detail/";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
 const MAX_RECEIPT_FIELD_LENGTH = 140;
 const FINAL_REQUEST_SHEETS = [VERIFIED_SHEET_NAME, REJECTED_SHEET_NAME];
+const CBE_TRANSACTION_API_HEADERS = {
+  "X-App-ID": "d1292e42-7400-49de-a2d3-9731caa4c819",
+  "X-App-Version": "0a01980b-9859-1369-8198-59f403820000",
+};
 const REQUEST_HEADERS = [
   "Received At",
   "Submission ID",
@@ -125,6 +130,11 @@ function verifyCbeReceipt(data, receivedAt) {
     return { ok: false, errors: ["Missing or invalid CBE receipt URL"] };
   }
 
+  const apiVerification = verifyCbeReceiptFromApi(url, receivedAt);
+  if (apiVerification) {
+    return apiVerification;
+  }
+
   const response = UrlFetchApp.fetch(url, {
     muteHttpExceptions: true,
     followRedirects: true,
@@ -197,6 +207,125 @@ function verifyCbeReceipt(data, receivedAt) {
     payer,
     reference,
   };
+}
+
+function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
+  const receiptId = extractCbeReceiptId(receiptUrl);
+
+  if (!receiptId) {
+    return null;
+  }
+
+  const apiUrl = `${CBE_TRANSACTION_API_BASE_URL}${encodeURIComponent(receiptId)}`;
+  let response;
+  try {
+    response = UrlFetchApp.fetch(apiUrl, {
+      method: "get",
+      headers: CBE_TRANSACTION_API_HEADERS,
+      muteHttpExceptions: true,
+      followRedirects: true,
+    });
+  } catch (error) {
+    return null;
+  }
+  const statusCode = response.getResponseCode();
+
+  if (statusCode < 200 || statusCode >= 300) {
+    return null;
+  }
+
+  let transaction;
+  try {
+    transaction = JSON.parse(response.getContentText() || "{}");
+  } catch (error) {
+    return null;
+  }
+
+  if (!transaction || typeof transaction !== "object" || !transaction.id) {
+    return null;
+  }
+
+  return buildCbeVerificationFromTransaction(transaction, receivedAt);
+}
+
+function buildCbeVerificationFromTransaction(transaction, receivedAt) {
+  const amount = parseReceiptNumber(transaction.amountCredited || transaction.creditAmount || transaction.debitAmount);
+  const paymentDate = parseCbeApiDate(transaction.dateTimes && transaction.dateTimes[0]) || parseCbeApiDate(transaction.processingDate);
+  const receiver = cleanReceiptField(transaction.creditAccountHolder);
+  const receiverAccount = cleanReceiptField(transaction.creditAccountNo);
+  const payer = cleanReceiptField(transaction.debitAccountHolder);
+  const reference = cleanReceiptField(transaction.id);
+  const errors = [];
+
+  if (!amount || amount < BASE_PRICE_BIRR) {
+    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
+  }
+
+  if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
+    errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
+  }
+
+  if (!receiverAccount || !receiverAccount.replace(/\D/g, "").endsWith(EXPECTED_RECEIVER_ACCOUNT_SUFFIX)) {
+    errors.push(`Receiver account does not end with ${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`);
+  }
+
+  if (!paymentDate) {
+    errors.push("Payment date/time not found");
+  } else {
+    const ageMs = receivedAt.getTime() - paymentDate.getTime();
+    if (ageMs < -5 * 60 * 1000) {
+      errors.push("Payment date/time is in the future");
+    }
+    if (ageMs > PAYMENT_WINDOW_MINUTES * 60 * 1000) {
+      errors.push(`Payment is older than ${PAYMENT_WINDOW_MINUTES} minutes`);
+    }
+  }
+
+  if (!reference) {
+    errors.push("Reference number not found");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    amount,
+    paymentDate,
+    receiver,
+    receiverAccount,
+    payer,
+    reference,
+  };
+}
+
+function extractCbeReceiptId(receiptUrl) {
+  const normalizedUrl = normalizeCbeReceiptUrl(receiptUrl);
+  const match = normalizedUrl.match(/^https?:\/\/mbreciept\.cbe\.com\.et\/([A-Za-z0-9-]+)$/i);
+  return match ? match[1] : "";
+}
+
+function parseReceiptNumber(value) {
+  const match = String(value || "").match(/[0-9,]+(?:\.\d+)?/);
+  return match ? Number(match[0].replace(/,/g, "")) : 0;
+}
+
+function parseCbeApiDate(value) {
+  const dateText = String(value || "").trim();
+
+  if (!dateText) {
+    return null;
+  }
+
+  const parsed = new Date(dateText);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const compactDate = dateText.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactDate) {
+    return new Date(Number(compactDate[1]), Number(compactDate[2]) - 1, Number(compactDate[3]));
+  }
+
+  return null;
 }
 
 function verifyPaymentReceipt(data, receivedAt) {
