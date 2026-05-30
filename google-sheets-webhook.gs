@@ -49,7 +49,6 @@ function doPost(event) {
   try {
     const data = JSON.parse(rawBody);
     data.cbeReceiptUrl = normalizeCbeReceiptUrl(data.cbeReceiptUrl);
-    const audioLink = saveAudioFile(data);
     const verification = verifyPaymentReceipt(data, receivedAt);
 
     if (data.paymentMethod !== "paypal" && isDuplicateReceiptUrl(spreadsheet, data.cbeReceiptUrl)) {
@@ -62,12 +61,12 @@ function doPost(event) {
       verification.errors.push("Reference number has already been used");
     }
 
-    appendIncoming(spreadsheet, receivedAt, data, audioLink);
-
     if (!verification.ok) {
-      appendRejected(spreadsheet, receivedAt, data, verification);
       return jsonResponse({ ok: false, errors: verification.errors });
     }
+
+    const audioLink = saveAudioFile(data);
+    appendIncoming(spreadsheet, receivedAt, data, audioLink);
 
     appendRequestRow(spreadsheet, VERIFIED_SHEET_NAME, [
       receivedAt.toLocaleString(),

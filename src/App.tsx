@@ -931,13 +931,14 @@ export default function App() {
       setReceiptName("");
       setCbeReceiptUrl("");
     } catch (error) {
+      const errorMessage = error instanceof Error && error.message.trim() ? error.message : formText.spreadsheetError;
       console.error("[receipt] Submission failed", {
         error,
         receiptFile: nextRecord.receiptFile,
         cbeReceiptUrl: nextRecord.cbeReceiptUrl,
       });
       setSubmitted(false);
-      setSubmissionError(formText.spreadsheetError);
+      setSubmissionError(errorMessage);
     } finally {
       setIsRecording(false);
     }
