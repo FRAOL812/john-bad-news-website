@@ -151,6 +151,11 @@ function isCbeReceiptUrl(value: string) {
   return lowerValue.startsWith(cbeReceiptBaseUrl) || lowerValue.startsWith(cbeLegacyReceiptBaseUrl);
 }
 
+function getCbeReference(value: string) {
+  const match = value.match(/\b(FT[A-Za-z0-9]{10})\b/i);
+  return match ? match[1].toUpperCase() : "";
+}
+
 function readFileAsBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -1118,10 +1123,22 @@ export default function App() {
         console.warn("[receipt] Primary scan failed, falling back to text OCR scan", err);
       }
 
-      if (!isCbeReceiptUrl(extractedUrl)) {
+      if (!isCbeReceiptUrl(extractedUrl) || !getCbeReference(extractedUrl)) {
         console.info("[receipt] QR/URL scan did not yield a valid CBE receipt URL. Running full text OCR fallback...");
         const receiptText = await readReceiptTextWithOcr(file);
+        const extractedReference = getCbeReference(receiptText);
         extractedUrl = getCbeReceiptUrl(receiptText);
+
+        if (extractedReference) {
+          console.info("[receipt] CBE receipt reference extracted from OCR text", {
+            name: file.name,
+            reference: extractedReference,
+          });
+          setReceiptName(file.name);
+          setCbeReceiptUrl(`ocr:${extractedReference}`);
+          setReceiptError("");
+          return;
+        }
 
         if (isCbeReceiptUrl(extractedUrl)) {
           console.info("[receipt] CBE receipt URL extracted from OCR text", {

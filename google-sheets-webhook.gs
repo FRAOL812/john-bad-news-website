@@ -125,21 +125,12 @@ function verifyCbeReceipt(data, receivedAt) {
   const receiptUrl = data.cbeReceiptUrl || "";
 
   if (receiptUrl.toLowerCase().startsWith("ocr:")) {
-    const reference = receiptUrl.substring(4).trim();
-    if (!reference || reference.length < 5) {
+    const reference = cleanCbeReference(receiptUrl.substring(4).trim());
+    if (!reference) {
       errors.push("Invalid OCR Reference Number");
     }
-    const claimedAmount = Number(data.paymentAmount) || BASE_PRICE_BIRR;
-    return {
-      ok: errors.length === 0,
-      errors,
-      amount: claimedAmount,
-      paymentDate: receivedAt,
-      receiver: EXPECTED_RECEIVER_NAME,
-      receiverAccount: `*${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`,
-      payer: "CBE Screenshot (OCR Verified)",
-      reference: reference,
-    };
+
+    return errors.length ? { ok: false, errors } : verifyCbeReceiptReferenceFromPdf(reference, receivedAt);
   }
 
   const url = normalizeCbeReceiptUrl(receiptUrl);
@@ -234,20 +225,24 @@ function verifyCbeReceiptFromPdf(receiptUrl, receivedAt) {
       };
     }
 
-    const verificationId = buildCbePdfVerificationId(reference);
-    const fetchResult = fetchCbePdfVerificationText(verificationId);
-
-    if (!fetchResult.ok) {
-      return fetchResult;
-    }
-
-    return buildCbeVerificationFromReceiptText(fetchResult.text, receivedAt, reference);
+    return verifyCbeReceiptReferenceFromPdf(reference, receivedAt);
   } catch (error) {
     return {
       ok: false,
       errors: [`CBE PDF verification failed: ${String(error && error.message ? error.message : error)} (${WEBHOOK_VERSION})`],
     };
   }
+}
+
+function verifyCbeReceiptReferenceFromPdf(reference, receivedAt) {
+  const verificationId = buildCbePdfVerificationId(reference);
+  const fetchResult = fetchCbePdfVerificationText(verificationId);
+
+  if (!fetchResult.ok) {
+    return fetchResult;
+  }
+
+  return buildCbeVerificationFromReceiptText(fetchResult.text, receivedAt, reference);
 }
 
 function buildCbePdfVerificationId(reference) {
