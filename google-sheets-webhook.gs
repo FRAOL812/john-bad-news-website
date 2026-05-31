@@ -1070,7 +1070,7 @@ function appendRejected(spreadsheet, receivedAt, data, verification) {
 function appendIncoming(spreadsheet, receivedAt, data, audioLink) {
   const sheet = getSheet(spreadsheet, INCOMING_SHEET_NAME);
   ensureIncomingHeader(sheet);
-  sheet.appendRow([
+  writeRequestRow(sheet, [
     receivedAt.toLocaleString(),
     cleanCell(data.id),
     "Incoming",
@@ -1176,7 +1176,13 @@ function getSheet(spreadsheet, sheetName) {
 function appendRequestRow(spreadsheet, sheetName, row) {
   const sheet = getSheet(spreadsheet, sheetName);
   ensureRequestHeader(sheet);
-  sheet.appendRow(normalizeRequestRow(row));
+  writeRequestRow(sheet, row);
+}
+
+function writeRequestRow(sheet, row) {
+  const rowNumber = getLastRequestDataRow(sheet, REQUEST_HEADERS) + 1;
+  sheet.getRange(rowNumber, 1, 1, REQUEST_HEADERS.length).setValues([normalizeRequestRow(row)]);
+  ensureDoneNewsCheckboxForRow(sheet, REQUEST_HEADERS, rowNumber);
 }
 
 function normalizeRequestRow(row) {
@@ -1220,9 +1226,11 @@ function ensureHeader(sheet, headers) {
 
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-  sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), headers.length).setVerticalAlignment("top");
-  sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), headers.length).setWrap(true);
-  ensureDoneNewsCheckboxes(sheet, headers);
+  const lastDataRow = getLastRequestDataRow(sheet, headers);
+  sheet.getRange(1, 1, Math.max(lastDataRow, 1), headers.length).setVerticalAlignment("top");
+  sheet.getRange(1, 1, Math.max(lastDataRow, 1), headers.length).setWrap(true);
+  ensureDoneNewsCheckboxes(sheet, headers, lastDataRow);
+  clearUnusedDoneNewsCheckboxes(sheet, headers, lastDataRow);
   sheet.autoResizeColumns(1, headers.length);
 }
 
@@ -1247,15 +1255,59 @@ function ensureDoneNewsColumn(sheet, headers) {
   }
 }
 
-function ensureDoneNewsCheckboxes(sheet, headers) {
+function ensureDoneNewsCheckboxes(sheet, headers, lastDataRow) {
   const doneNewsColumn = headers.indexOf("Done News") + 1;
 
-  if (!doneNewsColumn) {
+  if (!doneNewsColumn || lastDataRow < 2) {
     return;
   }
 
-  const rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  sheet.getRange(2, doneNewsColumn, rowCount, 1).insertCheckboxes();
+  sheet.getRange(2, doneNewsColumn, lastDataRow - 1, 1).insertCheckboxes();
+}
+
+function ensureDoneNewsCheckboxForRow(sheet, headers, rowNumber) {
+  const doneNewsColumn = headers.indexOf("Done News") + 1;
+
+  if (!doneNewsColumn || rowNumber < 2) {
+    return;
+  }
+
+  sheet.getRange(rowNumber, doneNewsColumn, 1, 1).insertCheckboxes();
+}
+
+function clearUnusedDoneNewsCheckboxes(sheet, headers, lastDataRow) {
+  const doneNewsColumn = headers.indexOf("Done News") + 1;
+  const firstUnusedRow = Math.max(lastDataRow + 1, 2);
+  const rowCount = sheet.getMaxRows() - firstUnusedRow + 1;
+
+  if (!doneNewsColumn || rowCount < 1) {
+    return;
+  }
+
+  sheet.getRange(firstUnusedRow, doneNewsColumn, rowCount, 1).clearContent().clearDataValidations();
+}
+
+function getLastRequestDataRow(sheet, headers) {
+  const rowCount = Math.max(sheet.getMaxRows() - 1, 0);
+
+  if (!rowCount) {
+    return 1;
+  }
+
+  const doneNewsIndex = headers.indexOf("Done News");
+  const values = sheet.getRange(2, 1, rowCount, headers.length).getValues();
+
+  for (let rowIndex = values.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const hasData = values[rowIndex].some((value, columnIndex) => {
+      return columnIndex !== doneNewsIndex && cleanCell(value) !== "";
+    });
+
+    if (hasData) {
+      return rowIndex + 2;
+    }
+  }
+
+  return 1;
 }
 
 function cleanCell(value) {
