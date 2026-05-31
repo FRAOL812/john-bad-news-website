@@ -60,6 +60,10 @@ function setupAuthorization() {
   SpreadsheetApp.getActiveSpreadsheet();
 }
 
+function doGet() {
+  return jsonResponse({ ok: true, version: WEBHOOK_VERSION });
+}
+
 function doPost(event) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const receivedAt = new Date();

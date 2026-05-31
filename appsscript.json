@@ -16,5 +16,9 @@
     "https://www.googleapis.com/auth/spreadsheets.currentonly",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/drive"
-  ]
+  ],
+  "webapp": {
+    "access": "ANYONE_ANONYMOUS",
+    "executeAs": "USER_DEPLOYING"
+  }
 }
