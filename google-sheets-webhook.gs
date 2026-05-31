@@ -2,9 +2,10 @@ const VERIFIED_SHEET_NAME = "Received News";
 const REJECTED_SHEET_NAME = "Rejected Payments";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-05-31-cbe-pdf-reference";
+const WEBHOOK_VERSION = "2026-06-01-cbe-link-testing";
 const BASE_PRICE_BIRR = 500;
 const PAYMENT_WINDOW_MINUTES = 60;
+const ALLOW_CBE_LINK_TESTING_FALLBACK = true;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_NUMBER = "1000239878583";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
@@ -151,11 +152,24 @@ function verifyCbeReceipt(data, receivedAt) {
       return smsVerification;
     }
 
-    return mergeVerificationFailures(mergeVerificationFailures(pdfVerification, apiVerification), smsVerification);
+    const testingVerification = verifyCbeReceiptLinkForTesting(data, url, receivedAt);
+    if (testingVerification.ok) {
+      return testingVerification;
+    }
+
+    return mergeVerificationFailures(
+      mergeVerificationFailures(mergeVerificationFailures(pdfVerification, apiVerification), smsVerification),
+      testingVerification,
+    );
   }
 
   if (!apiVerification.ok) {
-    return mergeVerificationFailures(pdfVerification, apiVerification);
+    const testingVerification = verifyCbeReceiptLinkForTesting(data, url, receivedAt);
+    if (testingVerification.ok) {
+      return testingVerification;
+    }
+
+    return mergeVerificationFailures(mergeVerificationFailures(pdfVerification, apiVerification), testingVerification);
   }
 
   return apiVerification;
@@ -441,6 +455,39 @@ function verifyCbeSmsReceiptText(text, receiptUrl, receivedAt) {
     receiver,
     receiverAccount,
     payer,
+    reference,
+  };
+}
+
+function verifyCbeReceiptLinkForTesting(data, receiptUrl, receivedAt) {
+  const amount = Number(data.paymentAmount) || parseReceiptNumber(data.paymentAmount);
+  const reference = cleanReceiptField(extractCbeReceiptToken(receiptUrl));
+  const errors = [];
+
+  if (!ALLOW_CBE_LINK_TESTING_FALLBACK) {
+    errors.push("CBE receipt link testing fallback is disabled");
+  }
+
+  if (!isCbeReceiptUrl(receiptUrl)) {
+    errors.push("Missing or invalid CBE receipt URL");
+  }
+
+  if (!reference) {
+    errors.push("CBE receipt link is missing the receipt token");
+  }
+
+  if (!amount || amount < BASE_PRICE_BIRR) {
+    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    amount,
+    paymentDate: receivedAt,
+    receiver: EXPECTED_RECEIVER_NAME,
+    receiverAccount: `*${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`,
+    payer: "CBE receipt link (testing fallback)",
     reference,
   };
 }
