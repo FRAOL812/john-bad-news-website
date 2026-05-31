@@ -145,6 +145,15 @@ function verifyCbeReceipt(data, receivedAt) {
   }
 
   const apiVerification = verifyCbeReceiptFromApi(url, receivedAt);
+  if (!apiVerification.ok && data.receiptOcrText) {
+    const smsVerification = verifyCbeSmsReceiptText(data.receiptOcrText, url, receivedAt);
+    if (smsVerification.ok) {
+      return smsVerification;
+    }
+
+    return mergeVerificationFailures(mergeVerificationFailures(pdfVerification, apiVerification), smsVerification);
+  }
+
   if (!apiVerification.ok) {
     return mergeVerificationFailures(pdfVerification, apiVerification);
   }
@@ -367,8 +376,56 @@ function buildCbeVerificationFromReceiptText(text, receivedAt, expectedReference
     if (ageMs < -5 * 60 * 1000) {
       errors.push("Payment date/time is in the future");
     }
-    if (ageMs > PAYMENT_WINDOW_MINUTES * 60 * 1000) {
-      errors.push(`Payment is older than ${PAYMENT_WINDOW_MINUTES} minutes`);
+  }
+
+  if (!reference) {
+    errors.push("Reference number not found");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    amount,
+    paymentDate,
+    receiver,
+    receiverAccount,
+    payer,
+    reference,
+  };
+}
+
+function verifyCbeSmsReceiptText(text, receiptUrl, receivedAt) {
+  const receiptText = normalizeReceiptText(text);
+  const amount = extractAmount(receiptText);
+  const paymentDate = extractPaymentDate(receiptText) || extractSmsPaymentDate(receiptText, receivedAt);
+  const receiver = cleanReceiptField(extractReceiver(receiptText));
+  const receiverAccount = cleanReceiptField(extractReceiverAccount(receiptText));
+  const payer = cleanReceiptField(extractSmsPayer(receiptText) || extractPayer(receiptText));
+  const reference = cleanReceiptField(extractCbeReceiptToken(receiptUrl) || extractCbeReceiptToken(receiptText) || receiptUrl);
+  const errors = [];
+
+  if (!isCbeReceiptUrl(receiptUrl) || receiptText.toLowerCase().indexOf("cbe") === -1) {
+    errors.push("CBE SMS receipt text was not found");
+  }
+
+  if (!amount || amount < BASE_PRICE_BIRR) {
+    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
+  }
+
+  if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
+    errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
+  }
+
+  if (!receiverAccount || !receiverAccount.replace(/\D/g, "").endsWith(EXPECTED_RECEIVER_ACCOUNT_SUFFIX)) {
+    errors.push(`Receiver account does not end with ${EXPECTED_RECEIVER_ACCOUNT_SUFFIX}`);
+  }
+
+  if (!paymentDate) {
+    errors.push("Payment date/time not found");
+  } else {
+    const ageMs = receivedAt.getTime() - paymentDate.getTime();
+    if (ageMs < -5 * 60 * 1000) {
+      errors.push("Payment date/time is in the future");
     }
   }
 
@@ -439,9 +496,6 @@ function buildCbeVerificationFromTransaction(transaction, receivedAt) {
     const ageMs = receivedAt.getTime() - paymentDate.getTime();
     if (ageMs < -5 * 60 * 1000) {
       errors.push("Payment date/time is in the future");
-    }
-    if (ageMs > PAYMENT_WINDOW_MINUTES * 60 * 1000) {
-      errors.push(`Payment is older than ${PAYMENT_WINDOW_MINUTES} minutes`);
     }
   }
 
@@ -792,6 +846,7 @@ function extractReceiverAccount(text) {
     /Receiver\s+[A-Za-z]+(?:\s+[A-Za-z]+){1,3}\s*Account\s*([0-9*Xx\s-]+)/i,
     /Receiver Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
     /Receiver:[\s\S]*?Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
+    /to account\s*([0-9*Xx\s-]+)/i,
     /Transfer To Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
     /Credit Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
     /Credited Account:\s*\n?\s*([0-9*Xx\s-]+)/i,
@@ -815,6 +870,35 @@ function extractReceiverAccount(text) {
     }
   }
   return "";
+}
+
+function extractSmsPayer(text) {
+  return extractField(text, /Dear\s+([A-Za-z]+(?:\s+[A-Za-z]+){1,5})\s+You\s+have/i);
+}
+
+function extractSmsPaymentDate(text, receivedAt) {
+  const match = String(text || "").match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\s*,\s*([A-Za-z]{3,9})\s+(\d{1,2})\b/i);
+  if (!match) {
+    return null;
+  }
+
+  const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const month = monthNames.indexOf(match[4].substring(0, 3).toLowerCase());
+  if (month === -1) {
+    return null;
+  }
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const meridiem = match[3].toUpperCase();
+
+  if (meridiem === "PM" && hour < 12) {
+    hour += 12;
+  } else if (meridiem === "AM" && hour === 12) {
+    hour = 0;
+  }
+
+  return new Date(receivedAt.getFullYear(), month, Number(match[5]), hour, minute, 0);
 }
 
 function extractPayer(text) {

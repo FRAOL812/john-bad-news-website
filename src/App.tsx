@@ -49,6 +49,7 @@ type SubmissionRecord = {
   paymentStatus: string;
   cbeReceiptUrl: string;
   receiptVerificationValue: string;
+  receiptOcrText?: string;
   paypalReceiptVerified?: boolean;
   receiptFile: string;
   language: "en" | "am";
@@ -879,6 +880,7 @@ function CountrySelect({ value, onChange }: { value: string; onChange: (val: str
 export default function App() {
   const [receiptName, setReceiptName] = useState("");
   const [receiptError, setReceiptError] = useState("");
+  const [receiptOcrText, setReceiptOcrText] = useState("");
   const [cbeReceiptUrl, setCbeReceiptUrl] = useState("");
   const [isReceiptChecking, setIsReceiptChecking] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -981,6 +983,7 @@ export default function App() {
       paymentStatus: formText.paymentStatusPending,
       cbeReceiptUrl,
       receiptVerificationValue: cbeReceiptUrl,
+      receiptOcrText,
       paypalReceiptVerified: paymentMethod === "paypal",
       receiptFile: receiptName,
       language,
@@ -1014,6 +1017,7 @@ export default function App() {
     setSubmitted(false);
     setSubmissionError("");
     setCbeReceiptUrl("");
+    setReceiptOcrText("");
 
     if (isReceiptChecking) {
       console.warn("[receipt] Receipt change ignored while scanning is in progress");
@@ -1025,6 +1029,7 @@ export default function App() {
     if (!file) {
       console.info("[receipt] Receipt selection cleared");
       setReceiptName("");
+      setReceiptOcrText("");
       setReceiptError("");
       return;
     }
@@ -1041,6 +1046,7 @@ export default function App() {
       receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
+      setReceiptOcrText("");
       setReceiptError(formText.receiptQrUnsupported);
       return;
     }
@@ -1055,6 +1061,7 @@ export default function App() {
       receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
+      setReceiptOcrText("");
       setReceiptError(formText.receiptPdfUnsupported);
       return;
     }
@@ -1069,6 +1076,7 @@ export default function App() {
       receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
+      setReceiptOcrText("");
       setReceiptError(formText.receiptInvalidType);
       return;
     }
@@ -1082,6 +1090,7 @@ export default function App() {
       receiptInput.value = "";
       setReceiptName("");
       setCbeReceiptUrl("");
+      setReceiptOcrText("");
       setReceiptError(formText.receiptTooLarge);
       return;
     }
@@ -1101,6 +1110,7 @@ export default function App() {
             textPreview: receiptText.slice(0, 180),
           });
           setCbeReceiptUrl("");
+          setReceiptOcrText(receiptText);
           setReceiptError(formText.receiptQrMissing);
           return;
         }
@@ -1112,6 +1122,7 @@ export default function App() {
         });
         setReceiptName(file.name);
         setCbeReceiptUrl(`paypal:${paypalUsername}`);
+        setReceiptOcrText(receiptText);
         setReceiptError("");
         return;
       }
@@ -1136,6 +1147,7 @@ export default function App() {
           });
           setReceiptName(file.name);
           setCbeReceiptUrl(`ocr:${extractedReference}`);
+          setReceiptOcrText(receiptText);
           setReceiptError("");
           return;
         }
@@ -1147,6 +1159,7 @@ export default function App() {
           });
           setReceiptName(file.name);
           setCbeReceiptUrl(extractedUrl);
+          setReceiptOcrText(receiptText);
           setReceiptError("");
           return;
         }
@@ -1156,6 +1169,7 @@ export default function App() {
           textPreview: receiptText.slice(0, 240)
         });
         setCbeReceiptUrl("");
+        setReceiptOcrText(receiptText);
         setReceiptError(formText.receiptQrMissing);
         return;
       }
@@ -1166,6 +1180,7 @@ export default function App() {
       });
       setReceiptName(file.name);
       setCbeReceiptUrl(extractedUrl);
+      setReceiptOcrText("");
       setReceiptError("");
     } catch (error) {
       console.error("[receipt] Failed while scanning receipt image", {
@@ -1174,6 +1189,7 @@ export default function App() {
         diagnostics: getReceiptScanDiagnostics(),
       });
       setCbeReceiptUrl("");
+      setReceiptOcrText("");
       setReceiptError(formText.receiptQrMissing);
     } finally {
       setIsReceiptChecking(false);
