@@ -4,8 +4,11 @@ const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
 const WEBHOOK_VERSION = "2026-06-01-cbe-link-testing";
 const BASE_PRICE_BIRR = 500;
+const URGENT_PRICE_BIRR = 2000;
+const PAYPAL_BASE_PRICE_USD = 25;
+const PAYPAL_URGENT_PRICE_USD = 100;
 const PAYMENT_WINDOW_MINUTES = 60;
-const ALLOW_CBE_LINK_TESTING_FALLBACK = true;
+const ALLOW_CBE_LINK_TESTING_FALLBACK = false;
 const EXPECTED_RECEIVER_NAME = "Fraol Eshetu Hailu";
 const EXPECTED_RECEIVER_ACCOUNT_NUMBER = "1000239878583";
 const EXPECTED_RECEIVER_ACCOUNT_SUFFIX = "8583";
@@ -124,6 +127,7 @@ function doPost(event) {
 function verifyCbeReceipt(data, receivedAt) {
   const errors = [];
   const receiptUrl = data.cbeReceiptUrl || "";
+  const expectedAmount = getExpectedCbeAmount(data);
 
   if (receiptUrl.toLowerCase().startsWith("ocr:")) {
     const reference = cleanCbeReference(receiptUrl.substring(4).trim());
@@ -131,7 +135,7 @@ function verifyCbeReceipt(data, receivedAt) {
       errors.push("Invalid OCR Reference Number");
     }
 
-    return errors.length ? { ok: false, errors } : verifyCbeReceiptReferenceFromPdf(reference, receivedAt);
+    return errors.length ? { ok: false, errors } : verifyCbeReceiptReferenceFromPdf(reference, receivedAt, expectedAmount);
   }
 
   const url = normalizeCbeReceiptUrl(receiptUrl);
@@ -140,14 +144,14 @@ function verifyCbeReceipt(data, receivedAt) {
     return { ok: false, errors: ["Missing or invalid CBE receipt URL"] };
   }
 
-  const pdfVerification = verifyCbeReceiptFromPdf(url, receivedAt);
+  const pdfVerification = verifyCbeReceiptFromPdf(url, receivedAt, expectedAmount);
   if (pdfVerification.ok) {
     return pdfVerification;
   }
 
-  const apiVerification = verifyCbeReceiptFromApi(url, receivedAt);
+  const apiVerification = verifyCbeReceiptFromApi(url, receivedAt, expectedAmount);
   if (!apiVerification.ok && data.receiptOcrText) {
-    const smsVerification = verifyCbeSmsReceiptText(data.receiptOcrText, url, receivedAt);
+    const smsVerification = verifyCbeSmsReceiptText(data.receiptOcrText, url, receivedAt, expectedAmount);
     if (smsVerification.ok) {
       return smsVerification;
     }
@@ -175,7 +179,7 @@ function verifyCbeReceipt(data, receivedAt) {
   return apiVerification;
 }
 
-function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
+function verifyCbeReceiptFromApi(receiptUrl, receivedAt, expectedAmount) {
   const receiptToken = extractCbeReceiptToken(receiptUrl);
 
   if (!receiptToken) {
@@ -234,10 +238,10 @@ function verifyCbeReceiptFromApi(receiptUrl, receivedAt) {
     };
   }
 
-  return buildCbeVerificationFromTransaction(transaction, receivedAt);
+  return buildCbeVerificationFromTransaction(transaction, receivedAt, expectedAmount);
 }
 
-function verifyCbeReceiptFromPdf(receiptUrl, receivedAt) {
+function verifyCbeReceiptFromPdf(receiptUrl, receivedAt, expectedAmount) {
   try {
     const reference = extractCbeReferenceFromReceiptUrl(receiptUrl);
 
@@ -248,7 +252,7 @@ function verifyCbeReceiptFromPdf(receiptUrl, receivedAt) {
       };
     }
 
-    return verifyCbeReceiptReferenceFromPdf(reference, receivedAt);
+    return verifyCbeReceiptReferenceFromPdf(reference, receivedAt, expectedAmount);
   } catch (error) {
     return {
       ok: false,
@@ -257,7 +261,7 @@ function verifyCbeReceiptFromPdf(receiptUrl, receivedAt) {
   }
 }
 
-function verifyCbeReceiptReferenceFromPdf(reference, receivedAt) {
+function verifyCbeReceiptReferenceFromPdf(reference, receivedAt, expectedAmount) {
   const verificationId = buildCbePdfVerificationId(reference);
   const fetchResult = fetchCbePdfVerificationText(verificationId);
 
@@ -265,7 +269,7 @@ function verifyCbeReceiptReferenceFromPdf(reference, receivedAt) {
     return fetchResult;
   }
 
-  return buildCbeVerificationFromReceiptText(fetchResult.text, receivedAt, reference);
+  return buildCbeVerificationFromReceiptText(fetchResult.text, receivedAt, reference, expectedAmount);
 }
 
 function buildCbePdfVerificationId(reference) {
@@ -362,7 +366,7 @@ function extractTextFromPdfBlob(blob, verificationId) {
   }
 }
 
-function buildCbeVerificationFromReceiptText(text, receivedAt, expectedReference) {
+function buildCbeVerificationFromReceiptText(text, receivedAt, expectedReference, expectedAmount) {
   const amount = extractAmount(text);
   const paymentDate = extractPaymentDate(text);
   const receiver = cleanReceiptField(extractReceiver(text));
@@ -371,9 +375,7 @@ function buildCbeVerificationFromReceiptText(text, receivedAt, expectedReference
   const reference = cleanCbeReference(extractReference(text)) || cleanCbeReference(expectedReference);
   const errors = [];
 
-  if (!amount || amount < BASE_PRICE_BIRR) {
-    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
-  }
+  appendCbeAmountErrors(errors, amount, expectedAmount);
 
   if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
     errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
@@ -408,7 +410,7 @@ function buildCbeVerificationFromReceiptText(text, receivedAt, expectedReference
   };
 }
 
-function verifyCbeSmsReceiptText(text, receiptUrl, receivedAt) {
+function verifyCbeSmsReceiptText(text, receiptUrl, receivedAt, expectedAmount) {
   const receiptText = normalizeReceiptText(text);
   const amount = extractAmount(receiptText);
   const paymentDate = extractPaymentDate(receiptText) || extractSmsPaymentDate(receiptText, receivedAt);
@@ -422,9 +424,7 @@ function verifyCbeSmsReceiptText(text, receiptUrl, receivedAt) {
     errors.push("CBE SMS receipt text was not found");
   }
 
-  if (!amount || amount < BASE_PRICE_BIRR) {
-    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
-  }
+  appendCbeAmountErrors(errors, amount, expectedAmount);
 
   if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
     errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
@@ -476,9 +476,7 @@ function verifyCbeReceiptLinkForTesting(data, receiptUrl, receivedAt) {
     errors.push("CBE receipt link is missing the receipt token");
   }
 
-  if (!amount || amount < BASE_PRICE_BIRR) {
-    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
-  }
+  appendCbeAmountErrors(errors, amount, getExpectedCbeAmount(data));
 
   return {
     ok: errors.length === 0,
@@ -516,7 +514,7 @@ function extractCbeApiErrorMessage(responseText) {
   }
 }
 
-function buildCbeVerificationFromTransaction(transaction, receivedAt) {
+function buildCbeVerificationFromTransaction(transaction, receivedAt, expectedAmount) {
   const amount = parseReceiptNumber(transaction.amountCredited || transaction.creditAmount || transaction.debitAmount);
   const paymentDate = parseCbeApiDate(transaction.dateTimes && transaction.dateTimes[0]) || parseCbeApiDate(transaction.processingDate);
   const receiver = cleanReceiptField(transaction.creditAccountHolder);
@@ -525,9 +523,7 @@ function buildCbeVerificationFromTransaction(transaction, receivedAt) {
   const reference = cleanReceiptField(transaction.id);
   const errors = [];
 
-  if (!amount || amount < BASE_PRICE_BIRR) {
-    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
-  }
+  appendCbeAmountErrors(errors, amount, expectedAmount);
 
   if (!receiver || !receiver.toLowerCase().includes(EXPECTED_RECEIVER_NAME.toLowerCase())) {
     errors.push(`Receiver is not ${EXPECTED_RECEIVER_NAME}`);
@@ -560,6 +556,66 @@ function buildCbeVerificationFromTransaction(transaction, receivedAt) {
     payer,
     reference,
   };
+}
+
+function getExpectedCbeAmount(data) {
+  return getExpectedPaymentAmount(data);
+}
+
+function getExpectedPaymentAmount(data) {
+  const paymentMethod = String(data && data.paymentMethod ? data.paymentMethod : "cbe").toLowerCase();
+  const serviceTier = String(data && data.serviceTier ? data.serviceTier : "basic").toLowerCase();
+  const specialAmount = parseReceiptNumber(data && data.specialRequestAmount);
+  let baseAmount;
+
+  if (paymentMethod === "paypal") {
+    baseAmount = serviceTier.indexOf("urgent") !== -1 ? PAYPAL_URGENT_PRICE_USD : PAYPAL_BASE_PRICE_USD;
+  } else {
+    baseAmount = serviceTier.indexOf("urgent") !== -1 ? URGENT_PRICE_BIRR : BASE_PRICE_BIRR;
+  }
+
+  return baseAmount + specialAmount;
+}
+
+function appendClaimedAmountErrors(errors, claimedAmount, expectedAmount, currency) {
+  const claimedCents = Math.round(Number(claimedAmount || 0) * 100);
+  const expectedCents = Math.round(Number(expectedAmount || 0) * 100);
+
+  if (!claimedCents) {
+    errors.push("Claimed payment amount not found");
+    return;
+  }
+
+  if (claimedCents !== expectedCents) {
+    errors.push(`Claimed payment amount must match the selected payment option (${formatMoneyAmount(expectedAmount)} ${currency})`);
+  }
+}
+
+function appendCbeAmountErrors(errors, amount, expectedAmount) {
+  const minimumCents = Math.round(BASE_PRICE_BIRR * 100);
+  const expectedCents = Math.round(Number(expectedAmount || 0) * 100);
+  const amountCents = Math.round(Number(amount || 0) * 100);
+
+  if (!amountCents) {
+    errors.push("Transferred amount not found");
+    return;
+  }
+
+  if (amountCents < minimumCents) {
+    errors.push(`Transferred amount is below ${BASE_PRICE_BIRR} ETB`);
+    return;
+  }
+
+  if (expectedCents && amountCents !== expectedCents) {
+    errors.push(`Transferred amount must match the selected CBE payment option (${formatMoneyAmount(expectedAmount)} ETB)`);
+  }
+}
+
+function formatMoneyAmount(amount) {
+  return Number(amount || 0).toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number(amount || 0) % 1 === 0 ? 0 : 2,
+  });
 }
 
 function extractCbeReceiptToken(receiptUrl) {
@@ -678,21 +734,31 @@ function verifyPaymentReceipt(data, receivedAt) {
 }
 
 function verifyPaypalReceipt(data) {
-  const amount = Number(data.paymentAmount);
-  const minimumAmount = String(data.serviceTier || "").toLowerCase().indexOf("urgent") !== -1 ? 100 : 25;
+  const expectedAmount = getExpectedPaymentAmount(data);
+  const claimedAmount = parseReceiptNumber(data.paymentAmount);
+  const receiptAmount = extractPaypalAmount(data.receiptOcrText);
+  const errors = [];
 
   if (!data.paypalReceiptVerified) {
-    return { ok: false, errors: ["PayPal receipt screenshot was not verified"] };
+    errors.push("PayPal receipt screenshot was not verified");
   }
 
-  if (!Number.isFinite(amount) || amount < minimumAmount) {
-    return { ok: false, errors: [`PayPal amount is below ${minimumAmount} USD`] };
+  appendClaimedAmountErrors(errors, claimedAmount, expectedAmount, "USD");
+
+  if (!receiptAmount) {
+    errors.push("PayPal receipt amount not found");
+  } else if (Math.round(receiptAmount * 100) !== Math.round(expectedAmount * 100)) {
+    errors.push(`PayPal receipt amount must match the selected payment option (${formatMoneyAmount(expectedAmount)} USD)`);
+  }
+
+  if (errors.length) {
+    return { ok: false, errors };
   }
 
   return {
     ok: true,
     errors: [],
-    amount,
+    amount: receiptAmount,
     payer: "PayPal screenshot",
     receiver: "Yonatan Woldegiorgis",
     receiverAccount: "@YonatanWoldegiorgis9",
@@ -786,6 +852,27 @@ function extractAmount(text) {
   if (fallbackMatch) {
     return Number(fallbackMatch[1].replace(/,/g, ""));
   }
+  return 0;
+}
+
+function extractPaypalAmount(text) {
+  const receiptText = normalizeReceiptText(text || "");
+  const patterns = [
+    /(?:USD|\$)\s*([0-9,]+(?:\.\d{1,2})?)/i,
+    /([0-9,]+(?:\.\d{1,2})?)\s*USD\b/i,
+    /(?:Amount|Total|Paid|Payment):?\s*\n?\s*(?:USD|\$)?\s*([0-9,]+(?:\.\d{1,2})?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const amountText = extractField(receiptText, pattern);
+    if (amountText) {
+      const parsed = Number(amountText.replace(/,/g, ""));
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+
   return 0;
 }
 
