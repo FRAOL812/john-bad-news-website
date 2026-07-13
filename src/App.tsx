@@ -454,10 +454,10 @@ const serviceSummaryTranslations = {
     youtubeSteps: ["Subscribe", "Follow news deliveries", "Watch new episodes"],
     youtubeLink: "Subscribe on YouTube",
     plans: [
-      { name: "Local Basic", price: "500 Birr", detail: "Standard delivery", badge: "Basic" },
-      { name: "Local Urgent", price: "2000 Birr", detail: "24-hour update", badge: "Fast" },
+      { name: "Local Basic", price: "200 Birr", detail: "Standard delivery", badge: "Basic" },
+      { name: "Local Urgent", price: "800 Birr", detail: "24-hour update", badge: "Fast" },
       { name: "Abroad Basic", price: "25 USD", detail: "WhatsApp contact", badge: "Abroad" },
-      { name: "Abroad Urgent", price: "100 USD", detail: "Priority WhatsApp contact", badge: "Priority" },
+      { name: "Abroad Urgent", price: "75 USD", detail: "Priority WhatsApp contact", badge: "Priority" },
     ],
   },
   am: {
@@ -468,10 +468,10 @@ const serviceSummaryTranslations = {
     youtubeSteps: ["Subscribe ያድርጉ", "መርዶ ማድረሻዎችን ይከታተሉ", "አዳዲስ episodes ይመልከቱ"],
     youtubeLink: "በYouTube Subscribe ያድርጉ",
     plans: [
-      { name: "የኢትዮጵያ መደበኛ", price: "500 ብር", detail: "መደበኛ አገልግሎት", badge: "መደበኛ" },
-      { name: "የኢትዮጵያ አስቸኳይ", price: "2000 ብር", detail: "በ24 ሰአት ውስጥ ማሳወቅ", badge: "ፈጣን" },
+      { name: "የኢትዮጵያ መደበኛ", price: "200 ብር", detail: "መደበኛ አገልግሎት", badge: "መደበኛ" },
+      { name: "የኢትዮጵያ አስቸኳይ", price: "800 ብር", detail: "በ24 ሰአት ውስጥ ማሳወቅ", badge: "ፈጣን" },
       { name: "የውጭ መደበኛ", price: "25 USD", detail: "በWhatsApp ግንኙነት", badge: "ውጭ" },
-      { name: "የውጭ አስቸኳይ", price: "100 USD", detail: "ቅድሚያ ያለው WhatsApp ግንኙነት", badge: "ቅድሚያ" },
+      { name: "የውጭ አስቸኳይ", price: "75 USD", detail: "ቅድሚያ ያለው WhatsApp ግንኙነት", badge: "ቅድሚያ" },
     ],
   },
 };
@@ -504,27 +504,27 @@ const processTranslations = {
 
 const serviceTierTranslations: Record<"en" | "am", Record<ServiceTierId, { label: string; detail: string }>> = {
   en: {
-    basic: { label: "Basic", detail: "500 Birr / 25 USD" },
-    urgent: { label: "Urgent", detail: "2000 Birr / 100 USD" },
+    basic: { label: "Basic", detail: "200 Birr / 25 USD" },
+    urgent: { label: "Urgent", detail: "800 Birr / 75 USD" },
   },
   am: {
-    basic: { label: "መደበኛ", detail: "500 ብር / 25 USD" },
-    urgent: { label: "አስቸኳይ", detail: "2000 ብር / 100 USD" },
+    basic: { label: "መደበኛ", detail: "200 ብር / 25 USD" },
+    urgent: { label: "አስቸኳይ", detail: "800 ብር / 75 USD" },
   },
 };
 
 const paymentOptionTranslations: Record<"en" | "am", Record<PaymentOptionId, string>> = {
   en: {
-    "local-basic": "Local Basic - 500 Birr",
-    "local-urgent": "Local Urgent - 2000 Birr",
+    "local-basic": "Local Basic - 200 Birr",
+    "local-urgent": "Local Urgent - 800 Birr",
     "abroad-basic": "Abroad Basic - 25 USD",
-    "abroad-urgent": "Abroad Urgent - 100 USD",
+    "abroad-urgent": "Abroad Urgent - 75 USD",
   },
   am: {
-    "local-basic": "የኢትዮጵያ መደበኛ - 500 ብር",
-    "local-urgent": "የኢትዮጵያ አስቸኳይ - 2000 ብር",
+    "local-basic": "የኢትዮጵያ መደበኛ - 200 ብር",
+    "local-urgent": "የኢትዮጵያ አስቸኳይ - 800 ብር",
     "abroad-basic": "የውጭ መደበኛ - 25 USD",
-    "abroad-urgent": "የውጭ አስቸኳይ - 100 USD",
+    "abroad-urgent": "የውጭ አስቸኳይ - 75 USD",
   },
 };
 
@@ -587,7 +587,7 @@ const formTranslations = {
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     serviceTier: "አገልግሎት",
     paymentDetails: "የክፍያ መረጃ",
-    accountNo: "ቴሌቢር: 0913885322",
+    accountNo: "ቴሌብር: 0913885322",
     accountName: "ፍራኦል እሸቱ ኃይሉ",
     paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
     basePrice: "የተመረጠው ዋጋ",
@@ -603,7 +603,7 @@ const formTranslations = {
     paymentTooLow: "የተከፈለው መጠን ከመረጡት አገልግሎት ዋጋ በታች ነው።",
     paymentStatusPending: "ደረሰኝ ማረጋገጫ በመጠባበቅ ላይ",
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
-    receiptHelp: "ኢትዮጵያ፡ የቴሌቢር ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
+    receiptHelp: "ኢትዮጵያ፡ የቴሌብር ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
     receiptReady: "የደረሰኝ መረጃ ተረጋግጧል",
     receiptChecking: "ደረሰኙ እየተመረመረ ነው...",
     receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
@@ -611,7 +611,7 @@ const formTranslations = {
     receiptInvalidType: "የደረሰኝ JPG ወይም PNG ስክሪንሾት ብቻ ይስቀሉ።",
     receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። የክፍያ መረጃው የሚታይበት ስክሪንሾት ይስቀሉ።",
     receiptTooLarge: "ደረሰኙ 5MB ወይም ከዚያ በታች መሆን አለበት።",
-    receiptQrMissing: "ትክክለኛ የቴሌቢር ወይም የPayPal ደረሰኝ አልተገኘም። ትክክለኛው መረጃ የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
+    receiptQrMissing: "ትክክለኛ የቴሌብር ወይም የPayPal ደረሰኝ አልተገኘም። ትክክለኛው መረጃ የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
     receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደግፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የPayPal ስክሪንሾቱን እንደገና ይስቀሉ።",
     success: "እናመሰግናለን። ደረሰኝዎ ተረጋግጧል፣ መልእክቱንም እናደርሳለን።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
