@@ -30,7 +30,7 @@ type Step = {
 
 type PlatformName = "facebook" | "telegram" | "whatsapp" | "instagram";
 type ServiceTierId = "basic" | "urgent";
-type PaymentMethod = "cbe" | "paypal";
+type PaymentMethod = "telebirr" | "paypal";
 type PaymentOptionId = "local-basic" | "local-urgent" | "abroad-basic" | "abroad-urgent";
 
 type SubmissionRecord = {
@@ -71,10 +71,10 @@ declare global {
   }
 }
 
-const basePriceBirr = 500;
-const urgentPriceBirr = 2000;
+const basePriceBirr = 200;
+const urgentPriceBirr = 800;
 const abroadBasePriceUsd = 25;
-const abroadUrgentPriceUsd = 100;
+const abroadUrgentPriceUsd = 75;
 const paypalDisplayName = "Yonatan Woldegiorgis";
 const paypalUsername = "@YonatanWoldegiorgis9";
 const youtubeChannelUrl = "https://www.youtube.com/";
@@ -85,8 +85,8 @@ const acceptedReceiptTypes = ["image/jpeg", "image/png"];
 const acceptedReceiptExtensions = [".jpg", ".jpeg", ".png"];
 
 const paymentOptions: Record<PaymentOptionId, { tier: ServiceTierId; method: PaymentMethod; price: number; currency: "ETB" | "USD"; contactChannel: string }> = {
-  "local-basic": { tier: "basic", method: "cbe", price: basePriceBirr, currency: "ETB", contactChannel: "Phone" },
-  "local-urgent": { tier: "urgent", method: "cbe", price: urgentPriceBirr, currency: "ETB", contactChannel: "Phone" },
+  "local-basic": { tier: "basic", method: "telebirr", price: basePriceBirr, currency: "ETB", contactChannel: "Phone" },
+  "local-urgent": { tier: "urgent", method: "telebirr", price: urgentPriceBirr, currency: "ETB", contactChannel: "Phone" },
   "abroad-basic": { tier: "basic", method: "paypal", price: abroadBasePriceUsd, currency: "USD", contactChannel: "WhatsApp" },
   "abroad-urgent": { tier: "urgent", method: "paypal", price: abroadUrgentPriceUsd, currency: "USD", contactChannel: "WhatsApp" },
 };
@@ -542,11 +542,11 @@ const formTranslations = {
     receiverPlaceholder: "Enter receiver's name or phone number",
     serviceTier: "Service",
     paymentDetails: "Payment details",
-    accountNo: "Account No:- 1000239878583",
+    accountNo: "Telebirr: 0913885322",
     accountName: "Fraol Eshetu Hailu",
     paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
     basePrice: "Selected price",
-    urgentPrice: "Urgent: 2000 Birr / 100 USD",
+    urgentPrice: "Urgent: 800 Birr / 75 USD",
     abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
     liveNotice: "For YouTube Live content, applicants will be informed before anything is shown live.",
     specialRequestAmount: "Special Request Payment",
@@ -558,7 +558,7 @@ const formTranslations = {
     paymentTooLow: "The amount is below the selected service price.",
     paymentStatusPending: "Pending receipt confirmation",
     receiptUpload: "Click to upload receipt",
-    receiptHelp: "Ethiopia: upload a CBE screenshot with QR/link. Abroad: upload a PayPal screenshot showing Yonatan Woldegiorgis or @YonatanWoldegiorgis9.",
+    receiptHelp: "Ethiopia: upload a Telebirr payment screenshot. Abroad: upload a PayPal screenshot showing Yonatan Woldegiorgis or @YonatanWoldegiorgis9.",
     receiptReady: "Receipt identity verified",
     receiptChecking: "Checking receipt screenshot...",
     receiptCheckingWait: "Please wait while we check your receipt screenshot.",
@@ -566,11 +566,11 @@ const formTranslations = {
     receiptInvalidType: "Upload a JPG or PNG receipt screenshot only.",
     receiptPdfUnsupported: "PDF receipts are not accepted for automatic verification. Upload a screenshot with the payment details visible.",
     receiptTooLarge: "Receipt must be 5MB or smaller.",
-    receiptQrMissing: "Invalid receipt. Upload a valid CBE screenshot or PayPal screenshot showing the correct PayPal identity.",
-    receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the CBE screenshot again.",
+    receiptQrMissing: "Invalid receipt. Upload a valid Telebirr screenshot or PayPal screenshot showing the correct PayPal identity.",
+    receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the PayPal screenshot again.",
     success: "Thank you. Your receipt is verified and we will deliver the news.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
-    spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused CBE receipt and try again.",
+    spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused Telebirr receipt and try again.",
     recording: "Recording request...",
     security: "Your private details stay confidential. Never submit passwords.",
   },
@@ -587,11 +587,11 @@ const formTranslations = {
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     serviceTier: "አገልግሎት",
     paymentDetails: "የክፍያ መረጃ",
-    accountNo: "የሂሳብ ቁጥር:- 1000239878583",
+    accountNo: "ቴሌቢር: 0913885322",
     accountName: "ፍራኦል እሸቱ ኃይሉ",
     paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
     basePrice: "የተመረጠው ዋጋ",
-    urgentPrice: "አስቸኳይ፡ 2000 ብር / 100 USD",
+    urgentPrice: "አስቸኳይ፡ 800 ብር / 75 USD",
     abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
     liveNotice: "ለYouTube Live content ከማሳየታችን በፊት አመልካቾችን እናሳውቃለን።",
     specialRequestAmount: "የልዩ ጥያቄ ክፍያ",
@@ -603,7 +603,7 @@ const formTranslations = {
     paymentTooLow: "የተከፈለው መጠን ከመረጡት አገልግሎት ዋጋ በታች ነው።",
     paymentStatusPending: "ደረሰኝ ማረጋገጫ በመጠባበቅ ላይ",
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
-    receiptHelp: "ኢትዮጵያ፡ QR/link የሚታይበት የCBE ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
+    receiptHelp: "ኢትዮጵያ፡ የቴሌቢር ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
     receiptReady: "የደረሰኝ መረጃ ተረጋግጧል",
     receiptChecking: "ደረሰኙ እየተመረመረ ነው...",
     receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
@@ -611,8 +611,8 @@ const formTranslations = {
     receiptInvalidType: "የደረሰኝ JPG ወይም PNG ስክሪንሾት ብቻ ይስቀሉ።",
     receiptPdfUnsupported: "PDF ደረሰኞች ለራስ-ሰር ማረጋገጫ አይቀበሉም። የክፍያ መረጃው የሚታይበት ስክሪንሾት ይስቀሉ።",
     receiptTooLarge: "ደረሰኙ 5MB ወይም ከዚያ በታች መሆን አለበት።",
-    receiptQrMissing: "ትክክለኛ የCBE ወይም የPayPal ደረሰኝ አልተገኘም። ትክክለኛው መረጃ የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
-    receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደገፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የCBE ስክሪንሾቱን እንደገና ይስቀሉ።",
+    receiptQrMissing: "ትክክለኛ የቴሌቢር ወይም የPayPal ደረሰኝ አልተገኘም። ትክክለኛው መረጃ የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
+    receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደግፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የPayPal ስክሪንሾቱን እንደገና ይስቀሉ።",
     success: "እናመሰግናለን። ደረሰኝዎ ተረጋግጧል፣ መልእክቱንም እናደርሳለን።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
     spreadsheetError: "ጥያቄውን በቀጥታ መመዝገብ አልቻልንም። እባክዎ ደግመው ይሞክሩ።",
@@ -1041,13 +1041,14 @@ export default function App() {
       diagnostics: getReceiptScanDiagnostics(),
     });
 
-    if (paymentMethod === "cbe" && !canScanReceiptQr()) {
-      console.warn("[receipt] Receipt scan blocked by browser capability/context", getReceiptScanDiagnostics());
-      receiptInput.value = "";
-      setReceiptName("");
-      setCbeReceiptUrl("");
+    if (paymentMethod === "telebirr") {
+      console.info("[receipt] Telebirr receipt accepted", {
+        name: file.name,
+      });
+      setReceiptName(file.name);
+      setCbeReceiptUrl("telebirr:0913885322");
       setReceiptOcrText("");
-      setReceiptError(formText.receiptQrUnsupported);
+      setReceiptError("");
       return;
     }
 
