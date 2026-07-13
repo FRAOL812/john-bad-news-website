@@ -1370,7 +1370,11 @@ export default function App() {
               </label>
 
               <div className="account-box">
-                <Icon name="bank" />
+                {isAbroadPayment ? (
+                  <img src="/brand/paypal-logo.svg" alt="PayPal" style={{ width: "48px", height: "auto" }} />
+                ) : (
+                  <img src="/brand/telebirr-logo.svg" alt="Telebirr" style={{ width: "48px", height: "auto" }} />
+                )}
                 <div>
                   <strong>{formText.paymentDetails}</strong>
                   <b>{selectedPrice} {selectedCurrency}</b>
