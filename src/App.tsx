@@ -1477,7 +1477,7 @@ export default function App() {
         <div>
           <strong>{text.contactTitle}</strong>
           <span>+251 910474723</span>
-          <span>info@johnbadnews.com</span>
+          <span>info@johnnymerdo.com</span>
           <span>Addis Ababa, Ethiopia</span>
           <span>{text.hours}</span>
         </div>
