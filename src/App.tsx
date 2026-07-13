@@ -58,6 +58,10 @@ type SubmissionRecord = {
 type RuntimeConfig = {
   API_BASE?: string;
   SPREADSHEET_WEBHOOK_URL?: string;
+  TELEBIRR_NUMBER?: string;
+  TELEBIRR_ACCOUNT_NAME?: string;
+  PAYPAL_DISPLAY_NAME?: string;
+  PAYPAL_USERNAME?: string;
 };
 
 declare global {
@@ -75,8 +79,10 @@ const basePriceBirr = 200;
 const urgentPriceBirr = 800;
 const abroadBasePriceUsd = 25;
 const abroadUrgentPriceUsd = 75;
-const paypalDisplayName = "Yonatan Woldegiorgis";
-const paypalUsername = "@YonatanWoldegiorgis9";
+const paypalDisplayName = window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis";
+const paypalUsername = window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9";
+const telebirrNumber = window.__RUNTIME_CONFIG__?.TELEBIRR_NUMBER ?? "0913885322";
+const telebirrAccountName = window.__RUNTIME_CONFIG__?.TELEBIRR_ACCOUNT_NAME ?? "Fraol Eshetu Hailu";
 const youtubeChannelUrl = "https://www.youtube.com/";
 const maxReceiptSize = 5 * 1024 * 1024;
 const cbeReceiptBaseUrl = "https://mbreciept.cbe.com.et/";
@@ -542,9 +548,9 @@ const formTranslations = {
     receiverPlaceholder: "Enter receiver's name or phone number",
     serviceTier: "Service",
     paymentDetails: "Payment details",
-    accountNo: "Telebirr: 0913885322",
-    accountName: "Fraol Eshetu Hailu",
-    paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
+    accountNo: `Telebirr: ${telebirrNumber}`,
+    accountName: telebirrAccountName,
+    paypalAccount: `PayPal: ${paypalDisplayName} (${paypalUsername})`,
     basePrice: "Selected price",
     urgentPrice: "Urgent: 800 Birr / 75 USD",
     abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
@@ -587,9 +593,9 @@ const formTranslations = {
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     serviceTier: "አገልግሎት",
     paymentDetails: "የክፍያ መረጃ",
-    accountNo: "ቴሌብር: 0913885322",
-    accountName: "ፍራኦል እሸቱ ኃይሉ",
-    paypalAccount: "PayPal: Yonatan Woldegiorgis (@YonatanWoldegiorgis9)",
+    accountNo: `ቴሌብር: ${telebirrNumber}`,
+    accountName: telebirrAccountName,
+    paypalAccount: `PayPal: ${paypalDisplayName} (${paypalUsername})`,
     basePrice: "የተመረጠው ዋጋ",
     urgentPrice: "አስቸኳይ፡ 800 ብር / 75 USD",
     abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
@@ -1046,7 +1052,7 @@ export default function App() {
         name: file.name,
       });
       setReceiptName(file.name);
-      setCbeReceiptUrl("telebirr:0913885322");
+      setCbeReceiptUrl(`telebirr:${telebirrNumber}`);
       setReceiptOcrText("");
       setReceiptError("");
       return;
@@ -1101,29 +1107,12 @@ export default function App() {
       setReceiptError("");
       setIsReceiptChecking(true);
       if (paymentMethod === "paypal") {
-        const receiptText = await readReceiptTextWithOcr(file);
-
-        if (!hasPaypalIdentity(receiptText)) {
-          console.warn("[receipt] PayPal identity not found in screenshot", {
-            name: file.name,
-            expectedName: paypalDisplayName,
-            expectedUsername: paypalUsername,
-            textPreview: receiptText.slice(0, 180),
-          });
-          setCbeReceiptUrl("");
-          setReceiptOcrText(receiptText);
-          setReceiptError(formText.receiptQrMissing);
-          return;
-        }
-
-        console.info("[receipt] PayPal receipt identity accepted", {
+        console.info("[receipt] PayPal receipt accepted", {
           name: file.name,
-          expectedName: paypalDisplayName,
-          expectedUsername: paypalUsername,
         });
         setReceiptName(file.name);
         setCbeReceiptUrl(`paypal:${paypalUsername}`);
-        setReceiptOcrText(receiptText);
+        setReceiptOcrText("");
         setReceiptError("");
         return;
       }
