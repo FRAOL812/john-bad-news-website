@@ -2,7 +2,7 @@ const VERIFIED_SHEET_NAME = "Received News";
 const REJECTED_SHEET_NAME = "Rejected Payments";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-06-01-cbe-link-testing";
+const WEBHOOK_VERSION = "2026-07-17-telebirr-routing";
 const BASE_PRICE_BIRR = 500;
 const URGENT_PRICE_BIRR = 2000;
 const PAYPAL_BASE_PRICE_USD = 25;
@@ -78,7 +78,7 @@ function doPost(event) {
     data.cbeReceiptUrl = normalizeCbeReceiptUrl(data.cbeReceiptUrl);
     const verification = verifyPaymentReceipt(data, receivedAt);
 
-    if (data.paymentMethod !== "paypal" && isDuplicateReceiptUrl(spreadsheet, data.cbeReceiptUrl)) {
+    if (data.paymentMethod === "cbe" && isDuplicateReceiptUrl(spreadsheet, data.cbeReceiptUrl)) {
       verification.ok = false;
       verification.errors.push("CBE receipt link has already been submitted");
     }
@@ -101,7 +101,7 @@ function doPost(event) {
       "Verified",
       false,
       cleanCell(data.name),
-      cleanCell(data.phone),
+      getSenderPhone(data),
       cleanCell(data.badNews),
       cleanCell(data.receiver),
       formatClaimedPayment(data),
@@ -730,7 +730,38 @@ function verifyPaymentReceipt(data, receivedAt) {
     return verifyPaypalReceipt(data);
   }
 
+  if (data.paymentMethod === "telebirr") {
+    return verifyTelebirrReceipt(data);
+  }
+
   return verifyCbeReceipt(data, receivedAt);
+}
+
+function verifyTelebirrReceipt(data) {
+  const expectedAmount = getExpectedPaymentAmount(data);
+  const claimedAmount = parseReceiptNumber(data.paymentAmount);
+  const receiptMarker = String(data.receiptVerificationValue || data.cbeReceiptUrl || "").trim().toLowerCase();
+  const errors = [];
+
+  if (!data.telebirrReceiptVerified || receiptMarker.indexOf("telebirr:") !== 0 || !data.receiptFile) {
+    errors.push("Telebirr receipt screenshot was not verified");
+  }
+
+  appendClaimedAmountErrors(errors, claimedAmount, expectedAmount, "ETB");
+
+  if (errors.length) {
+    return { ok: false, errors };
+  }
+
+  return {
+    ok: true,
+    errors: [],
+    amount: claimedAmount,
+    payer: "Telebirr screenshot",
+    receiver: EXPECTED_RECEIVER_NAME,
+    receiverAccount: receiptMarker.substring("telebirr:".length),
+    reference: "",
+  };
 }
 
 function verifyPaypalReceipt(data) {
@@ -1137,7 +1168,7 @@ function appendRejected(spreadsheet, receivedAt, data, verification) {
     "Rejected",
     false,
     cleanCell(data.name),
-    cleanCell(data.phone),
+    getSenderPhone(data),
     cleanCell(data.badNews),
     cleanCell(data.receiver),
     formatClaimedPayment(data),
@@ -1163,7 +1194,7 @@ function appendIncoming(spreadsheet, receivedAt, data, audioLink) {
     "Incoming",
     false,
     cleanCell(data.name),
-    cleanCell(data.phone),
+    getSenderPhone(data),
     cleanCell(data.badNews),
     cleanCell(data.receiver),
     formatClaimedPayment(data),
@@ -1202,6 +1233,10 @@ function formatClaimedPayment(data) {
   }
 
   return parts.join(" | ");
+}
+
+function getSenderPhone(data) {
+  return cleanCell(data.phone || data.phoneNumber || data.senderPhone);
 }
 
 function saveAudioFile(data) {

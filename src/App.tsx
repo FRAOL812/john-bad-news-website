@@ -38,6 +38,7 @@ type SubmissionRecord = {
   receivedAt: string;
   name: string;
   phone: string;
+  phoneNumber: string;
   badNews: string;
   receiver: string;
   serviceTier: string;
@@ -50,6 +51,7 @@ type SubmissionRecord = {
   cbeReceiptUrl: string;
   receiptVerificationValue: string;
   receiptOcrText?: string;
+  telebirrReceiptVerified?: boolean;
   paypalReceiptVerified?: boolean;
   receiptFile: string;
   language: "en" | "am";
@@ -330,6 +332,11 @@ async function readReceiptTextWithOcr(file: File) {
 
 function normalizeComparableText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9@]+/g, "");
+}
+
+function formatPhoneNumber(countryCode: string, value: FormDataEntryValue | null) {
+  const nationalNumber = String(value ?? "").replace(/[^\d]/g, "");
+  return nationalNumber ? `${countryCode}${nationalNumber}` : "";
 }
 
 function hasPaypalIdentity(value: string) {
@@ -966,6 +973,8 @@ export default function App() {
     const specialRequestAmount = Number(form.get("specialRequestAmount") || 0);
     const cleanSpecialRequestAmount = Number.isFinite(specialRequestAmount) && specialRequestAmount > 0 ? specialRequestAmount : 0;
     const paymentAmount = selectedPrice + cleanSpecialRequestAmount;
+    const senderPhone = formatPhoneNumber(selectedCountryCode, form.get("phone"));
+    const receiverPhone = formatPhoneNumber(receiverCountryCode, form.get("receiver"));
 
     if (!Number.isFinite(paymentAmount) || paymentAmount < selectedPrice) {
       setSubmissionError(formText.paymentTooLow);
@@ -977,9 +986,10 @@ export default function App() {
       id: `${Date.now()}`,
       receivedAt: new Date().toLocaleString(),
       name: String(form.get("name") ?? ""),
-      phone: `${selectedCountryCode}${String(form.get("phone") ?? "")}`,
+      phone: senderPhone,
+      phoneNumber: senderPhone,
       badNews: String(form.get("badNews") ?? ""),
-      receiver: `${receiverCountryCode}${String(form.get("receiver") ?? "")}`,
+      receiver: receiverPhone,
       serviceTier: `${serviceTier} - ${serviceTierText[serviceTier].label}`,
       paymentMethod,
       contactChannel: selectedPaymentOption.contactChannel,
@@ -990,6 +1000,7 @@ export default function App() {
       cbeReceiptUrl,
       receiptVerificationValue: cbeReceiptUrl,
       receiptOcrText,
+      telebirrReceiptVerified: paymentMethod === "telebirr",
       paypalReceiptVerified: paymentMethod === "paypal",
       receiptFile: receiptName,
       language,
@@ -1047,17 +1058,6 @@ export default function App() {
       diagnostics: getReceiptScanDiagnostics(),
     });
 
-    if (paymentMethod === "telebirr") {
-      console.info("[receipt] Telebirr receipt accepted", {
-        name: file.name,
-      });
-      setReceiptName(file.name);
-      setCbeReceiptUrl(`telebirr:${telebirrNumber}`);
-      setReceiptOcrText("");
-      setReceiptError("");
-      return;
-    }
-
     const lowerName = file.name.toLowerCase();
     const isPdf = file.type === "application/pdf" || lowerName.endsWith(".pdf");
     const hasAcceptedExtension = acceptedReceiptExtensions.some((extension) => lowerName.endsWith(extension));
@@ -1099,6 +1099,17 @@ export default function App() {
       setCbeReceiptUrl("");
       setReceiptOcrText("");
       setReceiptError(formText.receiptTooLarge);
+      return;
+    }
+
+    if (paymentMethod === "telebirr") {
+      console.info("[receipt] Telebirr receipt accepted", {
+        name: file.name,
+      });
+      setReceiptName(file.name);
+      setCbeReceiptUrl(`telebirr:${telebirrNumber}`);
+      setReceiptOcrText("");
+      setReceiptError("");
       return;
     }
 

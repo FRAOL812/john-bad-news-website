@@ -1138,21 +1138,31 @@ label span svg {
 }
 
 .form-success {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid rgba(61, 195, 111, 0.42);
   border-radius: 7px;
   padding: 10px 12px;
   background: rgba(28, 106, 57, 0.24);
   color: #d9ffe7;
   font-size: 0.88rem;
+  line-height: 1.45;
+  text-align: left;
 }
 
 .form-error {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid rgba(255, 88, 88, 0.48);
   border-radius: 7px;
   padding: 10px 12px;
   background: rgba(134, 20, 28, 0.28);
   color: #ffd6da;
   font-size: 0.88rem;
+  line-height: 1.45;
+  text-align: left;
 }
 
 .security-note {
