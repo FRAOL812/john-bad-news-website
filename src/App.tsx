@@ -50,6 +50,7 @@ type SubmissionRecord = {
   paymentStatus: string;
   cbeReceiptUrl: string;
   receiptVerificationValue: string;
+  receiptLink?: string;
   receiptOcrText?: string;
   telebirrReceiptVerified?: boolean;
   paypalReceiptVerified?: boolean;
@@ -339,6 +340,19 @@ function formatPhoneNumber(countryCode: string, value: FormDataEntryValue | null
   return nationalNumber ? `${countryCode}${nationalNumber}` : "";
 }
 
+function normalizeTelebirrReceiptLink(value: FormDataEntryValue | null) {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) return "";
+  try {
+    const url = new URL(rawValue);
+    const validHost = url.protocol === "https:" && url.hostname.toLowerCase() === "transactioninfo.ethiotelecom.et";
+    const validPath = /^\/receipt\/[A-Za-z0-9-]{6,64}\/?$/.test(url.pathname);
+    return validHost && validPath ? `${url.origin}${url.pathname.replace(/\/$/, "")}` : "";
+  } catch {
+    return "";
+  }
+}
+
 function hasPaypalIdentity(value: string) {
   const normalized = normalizeComparableText(value);
   return (
@@ -582,6 +596,9 @@ const formTranslations = {
     paymentStatusPending: "Pending receipt confirmation",
     receiptUpload: "Click to upload receipt",
     receiptHelp: "Ethiopia: upload a Telebirr payment screenshot. Abroad: upload a PayPal screenshot showing Yonatan Woldegiorgis or @YonatanWoldegiorgis9.",
+    receiptLink: "Telebirr receipt link",
+    receiptLinkPlaceholder: "https://transactioninfo.ethiotelecom.et/receipt/DGB6Q7N5DM",
+    receiptLinkInvalid: "Enter a valid Telebirr receipt link from transactioninfo.ethiotelecom.et.",
     receiptReady: "Receipt identity verified",
     receiptChecking: "Checking receipt screenshot...",
     receiptCheckingWait: "Please wait while we check your receipt screenshot.",
@@ -627,6 +644,9 @@ const formTranslations = {
     paymentStatusPending: "ደረሰኝ ማረጋገጫ በመጠባበቅ ላይ",
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
     receiptHelp: "ኢትዮጵያ፡ የቴሌብር ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
+    receiptLink: "የቴሌብር ደረሰኝ ሊንክ",
+    receiptLinkPlaceholder: "https://transactioninfo.ethiotelecom.et/receipt/DGB6Q7N5DM",
+    receiptLinkInvalid: "ከ transactioninfo.ethiotelecom.et የተገኘ ትክክለኛ የቴሌብር ደረሰኝ ሊንክ ያስገቡ።",
     receiptReady: "የደረሰኝ መረጃ ተረጋግጧል",
     receiptChecking: "ደረሰኙ እየተመረመረ ነው...",
     receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
@@ -985,6 +1005,13 @@ export default function App() {
     const paymentAmount = selectedPrice + cleanSpecialRequestAmount;
     const senderPhone = formatPhoneNumber(selectedCountryCode, form.get("phone"));
     const receiverPhone = formatPhoneNumber(receiverCountryCode, form.get("receiver"));
+    const receiptLink = paymentMethod === "telebirr" ? normalizeTelebirrReceiptLink(form.get("receiptLink")) : "";
+
+    if (paymentMethod === "telebirr" && !receiptLink) {
+      setSubmissionError(formText.receiptLinkInvalid);
+      setSubmitted(false);
+      return;
+    }
 
     if (!Number.isFinite(paymentAmount) || paymentAmount < selectedPrice) {
       setSubmissionError(formText.paymentTooLow);
@@ -1008,7 +1035,8 @@ export default function App() {
       specialRequestAmount: cleanSpecialRequestAmount > 0 ? `${cleanSpecialRequestAmount}` : "",
       paymentStatus: formText.paymentStatusPending,
       cbeReceiptUrl,
-      receiptVerificationValue: cbeReceiptUrl,
+      receiptVerificationValue: receiptLink || cbeReceiptUrl,
+      receiptLink,
       receiptOcrText,
       telebirrReceiptVerified: paymentMethod === "telebirr",
       paypalReceiptVerified: paymentMethod === "paypal",
@@ -1449,6 +1477,22 @@ export default function App() {
                   )}
                 </span>
               </label>
+
+              {paymentMethod === "telebirr" && (
+                <label className="receipt-link-field">
+                  <span>
+                    <Icon name="receipt" /> {formText.receiptLink}
+                  </span>
+                  <input
+                    name="receiptLink"
+                    type="url"
+                    inputMode="url"
+                    placeholder={formText.receiptLinkPlaceholder}
+                    pattern="https://transactioninfo\.ethiotelecom\.et/receipt/[A-Za-z0-9-]{6,64}/?"
+                    required
+                  />
+                </label>
+              )}
 
               <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || isRecording}>
                 <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}

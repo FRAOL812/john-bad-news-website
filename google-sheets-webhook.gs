@@ -64,11 +64,13 @@ function verifyTelebirrReceipt(data, receivedAt) {
   const digits = text.replace(/\D/g, "");
   const expected = getExpectedAmount(data);
   const amount = extractEtbAmount(text);
-  const reference = extractReference(text);
+  const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
+  const reference = extractTelebirrReceiptId(receiptLink) || extractReference(text);
   const paymentDate = extractPaymentDate(text);
   const errors = [];
 
   if (!data.telebirrReceiptVerified || !data.receiptFile || !text) errors.push("Telebirr receipt screenshot was not scanned");
+  if (!receiptLink) errors.push("A valid Telebirr receipt link is required");
   if (compact.indexOf("telebirr") === -1) errors.push("The screenshot is not a Telebirr receipt");
   if (compact.indexOf(normalizeComparable(TELEBIRR_NAME)) === -1 && digits.indexOf(TELEBIRR_NUMBER) === -1) {
     errors.push(`Telebirr recipient must be ${TELEBIRR_NAME} or ${TELEBIRR_NUMBER}`);
@@ -80,6 +82,16 @@ function verifyTelebirrReceipt(data, receivedAt) {
     ok: errors.length === 0, errors, amount, paymentDate, reference,
     payer: extractPayer(text) || "Telebirr customer", receiver: TELEBIRR_NAME, receiverAccount: TELEBIRR_NUMBER,
   };
+}
+
+function normalizeTelebirrReceiptLink(value) {
+  const match = cleanCell(value).match(/^https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/([A-Za-z0-9-]{6,64})\/?$/i);
+  return match ? `https://transactioninfo.ethiotelecom.et/receipt/${match[1]}` : "";
+}
+
+function extractTelebirrReceiptId(value) {
+  const match = cleanCell(value).match(/\/receipt\/([A-Za-z0-9-]{6,64})\/?$/i);
+  return match ? cleanReceiptField(match[1]) : "";
 }
 
 function verifyPaypalReceipt(data) {
