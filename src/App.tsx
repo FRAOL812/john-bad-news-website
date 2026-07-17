@@ -347,6 +347,16 @@ function hasPaypalIdentity(value: string) {
   );
 }
 
+function hasTelebirrIdentity(value: string) {
+  const normalizedText = normalizeComparableText(value);
+  const receiptDigits = value.replace(/\D/g, "");
+  const accountDigits = telebirrNumber.replace(/\D/g, "");
+  return (
+    normalizedText.includes("telebirr") &&
+    (normalizedText.includes(normalizeComparableText(telebirrAccountName)) || receiptDigits.includes(accountDigits))
+  );
+}
+
 async function readCbeReceiptUrlFromImage(file: File) {
   if (!canScanReceiptQr()) {
     console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
@@ -1102,28 +1112,40 @@ export default function App() {
       return;
     }
 
-    if (paymentMethod === "telebirr") {
-      console.info("[receipt] Telebirr receipt accepted", {
-        name: file.name,
-      });
-      setReceiptName(file.name);
-      setCbeReceiptUrl(`telebirr:${telebirrNumber}`);
-      setReceiptOcrText("");
-      setReceiptError("");
-      return;
-    }
-
     try {
       setReceiptName(file.name);
       setReceiptError("");
       setIsReceiptChecking(true);
+      if (paymentMethod === "telebirr") {
+        console.info("[receipt] Reading Telebirr receipt screenshot", { name: file.name });
+        const receiptText = await readReceiptTextWithOcr(file);
+
+        if (!hasTelebirrIdentity(receiptText)) {
+          setCbeReceiptUrl("");
+          setReceiptOcrText(receiptText);
+          setReceiptError(formText.receiptQrMissing);
+          return;
+        }
+
+        setCbeReceiptUrl(`telebirr:${telebirrNumber}`);
+        setReceiptOcrText(receiptText);
+        setReceiptError("");
+        return;
+      }
+
       if (paymentMethod === "paypal") {
-        console.info("[receipt] PayPal receipt accepted", {
-          name: file.name,
-        });
-        setReceiptName(file.name);
+        console.info("[receipt] Reading PayPal receipt screenshot", { name: file.name });
+        const receiptText = await readReceiptTextWithOcr(file);
+
+        if (!hasPaypalIdentity(receiptText)) {
+          setCbeReceiptUrl("");
+          setReceiptOcrText(receiptText);
+          setReceiptError(formText.receiptQrMissing);
+          return;
+        }
+
         setCbeReceiptUrl(`paypal:${paypalUsername}`);
-        setReceiptOcrText("");
+        setReceiptOcrText(receiptText);
         setReceiptError("");
         return;
       }
