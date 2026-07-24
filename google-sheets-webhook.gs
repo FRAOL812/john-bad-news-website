@@ -2,10 +2,10 @@ const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
 const WEBHOOK_VERSION = "2026-07-17-telebirr-paypal-only";
-const BASE_PRICE_BIRR = 500;
-const URGENT_PRICE_BIRR = 2000;
+const BASE_PRICE_BIRR = 200;
+const URGENT_PRICE_BIRR = 800;
 const PAYPAL_BASE_PRICE_USD = 25;
-const PAYPAL_URGENT_PRICE_USD = 100;
+const PAYPAL_URGENT_PRICE_USD = 75;
 const TELEBIRR_NAME = "Fraol Eshetu Hailu";
 const TELEBIRR_NUMBER = "0913885322";
 const PAYPAL_NAME = "Yonatan Woldegiorgis";
@@ -128,11 +128,11 @@ function appendAmountErrors(errors, receiptAmount, expectedAmount, currency) {
 }
 
 function extractEtbAmount(text) {
-  return extractMoney(text, [/(?:ETB|Birr|Br)\s*([0-9,]+(?:\.\d{1,2})?)/i, /([0-9,]+(?:\.\d{1,2})?)\s*(?:ETB|Birr|Br)\b/i]);
+  return extractMoney(text, [/\b(?:ETB|Birr|Br)\b\s*([0-9,]+(?:\.\d{1,2})?)/i, /([0-9,]+(?:\.\d{1,2})?)\s*\b(?:ETB|Birr|Br)\b/i]);
 }
 
 function extractUsdAmount(text) {
-  return extractMoney(text, [/(?:USD|\$)\s*([0-9,]+(?:\.\d{1,2})?)/i, /([0-9,]+(?:\.\d{1,2})?)\s*USD\b/i]);
+  return extractMoney(text, [/(?:\bUSD\b|\$)\s*([0-9,]+(?:\.\d{1,2})?)/i, /([0-9,]+(?:\.\d{1,2})?)\s*\bUSD\b/i]);
 }
 
 function extractMoney(text, patterns) {
