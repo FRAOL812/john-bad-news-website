@@ -976,19 +976,28 @@ export default function App() {
       return;
     }
 
-    if (!receiptName) {
-      setReceiptError(formText.receiptMissing);
+    const specialRequestAmount = Number(form.get("specialRequestAmount") || 0);
+    const cleanSpecialRequestAmount = Number.isFinite(specialRequestAmount) && specialRequestAmount > 0 ? specialRequestAmount : 0;
+    const paymentAmount = selectedPrice + cleanSpecialRequestAmount;
+    const senderPhone = formatPhoneNumber(selectedCountryCode, form.get("phone"));
+    const receiverPhone = formatPhoneNumber(receiverCountryCode, form.get("receiver"));
+    const receiptLink = paymentMethod === "telebirr" ? normalizeTelebirrReceiptLink(form.get("receiptLink")) : "";
+    const hasReceiptUpload = Boolean(receiptName && cbeReceiptUrl);
+    const hasTelebirrVerification = paymentMethod === "telebirr" && (Boolean(receiptLink) || hasReceiptUpload);
+
+    if (paymentMethod === "paypal" && !hasReceiptUpload) {
+      setReceiptError(receiptName ? formText.receiptQrMissing : formText.receiptMissing);
       setSubmitted(false);
       return;
     }
 
-    if (!cbeReceiptUrl) {
-      setReceiptError(formText.receiptQrMissing);
+    if (paymentMethod === "telebirr" && !hasTelebirrVerification) {
+      setSubmissionError(formText.receiptLinkInvalid);
       setSubmitted(false);
       return;
     }
 
-    if (receiptError) {
+    if (receiptError && !receiptLink) {
       setSubmissionError(receiptError);
       setSubmitted(false);
       return;
@@ -996,19 +1005,6 @@ export default function App() {
 
     if (!getSpreadsheetWebhookUrl()) {
       setSubmissionError(formText.spreadsheetMissing);
-      setSubmitted(false);
-      return;
-    }
-
-    const specialRequestAmount = Number(form.get("specialRequestAmount") || 0);
-    const cleanSpecialRequestAmount = Number.isFinite(specialRequestAmount) && specialRequestAmount > 0 ? specialRequestAmount : 0;
-    const paymentAmount = selectedPrice + cleanSpecialRequestAmount;
-    const senderPhone = formatPhoneNumber(selectedCountryCode, form.get("phone"));
-    const receiverPhone = formatPhoneNumber(receiverCountryCode, form.get("receiver"));
-    const receiptLink = paymentMethod === "telebirr" ? normalizeTelebirrReceiptLink(form.get("receiptLink")) : "";
-
-    if (paymentMethod === "telebirr" && !receiptLink) {
-      setSubmissionError(formText.receiptLinkInvalid);
       setSubmitted(false);
       return;
     }
@@ -1034,13 +1030,13 @@ export default function App() {
       paymentCurrency: selectedCurrency,
       specialRequestAmount: cleanSpecialRequestAmount > 0 ? `${cleanSpecialRequestAmount}` : "",
       paymentStatus: formText.paymentStatusPending,
-      cbeReceiptUrl,
+      cbeReceiptUrl: cbeReceiptUrl || receiptLink,
       receiptVerificationValue: receiptLink || cbeReceiptUrl,
       receiptLink,
       receiptOcrText,
       telebirrReceiptVerified: paymentMethod === "telebirr",
       paypalReceiptVerified: paymentMethod === "paypal",
-      receiptFile: receiptName,
+      receiptFile: receiptName || (receiptLink ? "Telebirr receipt link" : ""),
       language,
     };
 
@@ -1459,7 +1455,6 @@ export default function App() {
                   name="receipt"
                   type="file"
                   accept=".jpg,.jpeg,.png"
-                  required
                   aria-describedby="receipt-status"
                   onChange={handleReceiptChange}
                   disabled={isReceiptChecking}
@@ -1489,12 +1484,11 @@ export default function App() {
                     inputMode="url"
                     placeholder={formText.receiptLinkPlaceholder}
                     pattern="https://transactioninfo\.ethiotelecom\.et/receipt/[A-Za-z0-9-]{6,64}/?"
-                    required
                   />
                 </label>
               )}
 
-              <button className="submit-button" type="submit" disabled={isReceiptChecking || Boolean(receiptError) || isRecording}>
+              <button className="submit-button" type="submit" disabled={isReceiptChecking || isRecording}>
                 <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}
               </button>
               {submitted && <output className="form-success">{formText.success}</output>}

@@ -67,19 +67,21 @@ function verifyTelebirrReceipt(data, receivedAt) {
   const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
   const reference = extractTelebirrReceiptId(receiptLink) || extractReference(text);
   const paymentDate = extractPaymentDate(text);
+  const hasScannedReceipt = Boolean(data.telebirrReceiptVerified && data.receiptFile && text);
   const errors = [];
 
-  if (!data.telebirrReceiptVerified || !data.receiptFile || !text) errors.push("Telebirr receipt screenshot was not scanned");
-  if (!receiptLink) errors.push("A valid Telebirr receipt link is required");
-  if (compact.indexOf("telebirr") === -1) errors.push("The screenshot is not a Telebirr receipt");
-  if (compact.indexOf(normalizeComparable(TELEBIRR_NAME)) === -1 && digits.indexOf(TELEBIRR_NUMBER) === -1) {
-    errors.push(`Telebirr recipient must be ${TELEBIRR_NAME} or ${TELEBIRR_NUMBER}`);
+  if (!hasScannedReceipt && !receiptLink) errors.push("Upload a Telebirr receipt screenshot or paste a valid Telebirr receipt link");
+  if (hasScannedReceipt) {
+    if (compact.indexOf("telebirr") === -1) errors.push("The screenshot is not a Telebirr receipt");
+    if (compact.indexOf(normalizeComparable(TELEBIRR_NAME)) === -1 && digits.indexOf(TELEBIRR_NUMBER) === -1) {
+      errors.push(`Telebirr recipient must be ${TELEBIRR_NAME} or ${TELEBIRR_NUMBER}`);
+    }
+    appendAmountErrors(errors, amount, expected, "ETB");
   }
-  appendAmountErrors(errors, amount, expected, "ETB");
   if (!reference) errors.push("Telebirr transaction reference was not found");
   if (paymentDate && receivedAt.getTime() - paymentDate.getTime() < -300000) errors.push("Telebirr payment date/time is in the future");
   return {
-    ok: errors.length === 0, errors, amount, paymentDate, reference,
+    ok: errors.length === 0, errors, amount: amount || expected, paymentDate, reference,
     payer: extractPayer(text) || "Telebirr customer", receiver: TELEBIRR_NAME, receiverAccount: TELEBIRR_NUMBER,
   };
 }
