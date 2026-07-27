@@ -166,6 +166,21 @@ function getCbeReference(value: string) {
   return match ? match[1].toUpperCase() : "";
 }
 
+function extractTelebirrTransactionNumber(text: string) {
+  const patterns = [/(?:Transaction|Payment)\s*(?:No\.?|Number|ID|Reference|Ref\.?)\s*:?\s*([A-Za-z0-9-]{6,64})/i, /(?:Receipt|Reference|Ref\.?)\s*(?:No\.?|Number|ID)?\s*:?\s*([A-Za-z0-9-]{6,64})/i];
+  for (let i = 0; i < patterns.length; i += 1) {
+    const match = String(text || "").match(patterns[i]);
+    if (match) return match[1].trim();
+  }
+  return "";
+}
+
+function buildTelebirrReceiptLink(transactionNumber: string) {
+  const cleanId = transactionNumber.replace(/[^A-Za-z0-9-]/g, "");
+  if (!cleanId) return "";
+  return `https://transactioninfo.ethiotelecom.et/receipt/${cleanId}`;
+}
+
 function readFileAsBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -364,10 +379,7 @@ function hasPaypalIdentity(value: string) {
 function hasTelebirrIdentity(value: string) {
   const normalizedText = normalizeComparableText(value);
   const accountFirstName = telebirrAccountName.split(" ")[0].toLowerCase();
-  return (
-    normalizedText.includes("telebirr") &&
-    (normalizedText.includes(accountFirstName) || receiptDigits.includes(accountDigits))
-  );
+  return normalizedText.includes("telebirr") && normalizedText.includes(accountFirstName);
 }
 
 async function readCbeReceiptUrlFromImage(file: File) {
@@ -1148,7 +1160,9 @@ export default function App() {
           return;
         }
 
-        setCbeReceiptUrl(`telebirr:${telebirrNumber}`);
+        const transactionNumber = extractTelebirrTransactionNumber(receiptText);
+        const receiptLink = buildTelebirrReceiptLink(transactionNumber);
+        setCbeReceiptUrl(receiptLink || `telebirr:${telebirrNumber}`);
         setReceiptOcrText(receiptText);
         setReceiptError("");
         return;
@@ -1490,7 +1504,6 @@ export default function App() {
               </button>
               {submitted && <output className="form-success">{formText.success}</output>}
               {submissionError && <output className="form-error">{submissionError}</output>}
-              <small className="security-note">{formText.security}</small>
             </form>
           </aside>
         </section>
