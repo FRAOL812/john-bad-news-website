@@ -363,11 +363,9 @@ function hasPaypalIdentity(value: string) {
 
 function hasTelebirrIdentity(value: string) {
   const normalizedText = normalizeComparableText(value);
-  const receiptDigits = value.replace(/\D/g, "");
-  const accountDigits = telebirrNumber.replace(/\D/g, "");
   return (
     normalizedText.includes("telebirr") &&
-    (normalizedText.includes(normalizeComparableText(telebirrAccountName)) || receiptDigits.includes(accountDigits))
+    (normalizedText.includes("successful") || normalizedText.includes("etb") || normalizedText.includes("transaction"))
   );
 }
 
