@@ -612,7 +612,6 @@ const formTranslations = {
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
     spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused Telebirr receipt and try again.",
     recording: "Recording request...",
-    security: "Your private details stay confidential. Never submit passwords.",
   },
   am: {
     title: "የመርዶ ቅጽ",
@@ -660,7 +659,6 @@ const formTranslations = {
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
     spreadsheetError: "ጥያቄውን በቀጥታ መመዝገብ አልቻልንም። እባክዎ ደግመው ይሞክሩ።",
     recording: "ጥያቄው እየተመዘገበ ነው...",
-    security: "የግል መረጃዎ በምስጢር ይጠበቃል። የይለፍ ቃሎችን በፍጹም አያስገቡ።",
   },
 };
 
