@@ -376,12 +376,6 @@ function hasPaypalIdentity(value: string) {
   );
 }
 
-function hasTelebirrIdentity(value: string) {
-  const normalizedText = normalizeComparableText(value);
-  const accountFirstName = telebirrAccountName.split(" ")[0].toLowerCase();
-  return normalizedText.includes("telebirr") && normalizedText.includes(accountFirstName);
-}
-
 async function readCbeReceiptUrlFromImage(file: File) {
   if (!canScanReceiptQr()) {
     console.warn("[receipt] QR scanning unavailable", getReceiptScanDiagnostics());
@@ -619,6 +613,9 @@ const formTranslations = {
     receiptTooLarge: "Receipt must be 5MB or smaller.",
     receiptQrMissing: "Invalid receipt. Upload a valid Telebirr screenshot or PayPal screenshot showing the correct PayPal identity.",
     receiptQrUnsupported: "Receipt scanning is not supported in this browser. Please use Chrome or Edge and upload the PayPal screenshot again.",
+    receiptNotTelebirr: "This does not look like a Telebirr receipt.",
+    receiptNameMismatch: "Could not verify the recipient name on this receipt.",
+    receiptTransactionMissing: "Could not find the Transaction Number on this receipt.",
     success: "Thank you. Your receipt is verified and we will deliver the news.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
     spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused Telebirr receipt and try again.",
@@ -666,6 +663,9 @@ const formTranslations = {
     receiptTooLarge: "ደረሰኙ 5MB ወይም ከዚያ በታች መሆን አለበት።",
     receiptQrMissing: "ትክክለኛ የቴሌብር ወይም የPayPal ደረሰኝ አልተገኘም። ትክክለኛው መረጃ የሚታይበት ግልጽ ስክሪንሾት ይስቀሉ።",
     receiptQrUnsupported: "የደረሰኝ መቃኘት በዚህ browser አይደግፍም። እባክዎ Chrome ወይም Edge ይጠቀሙና የPayPal ስክሪንሾቱን እንደገና ይስቀሉ።",
+    receiptNotTelebirr: "ይህ የቴሌብር ደረሰኝ አይመስልም።",
+    receiptNameMismatch: "የተቀባዩን ስም በዚህ ደረሰኝ ላይ ማረጋገጥ አልቻልን።",
+    receiptTransactionMissing: "የትርጉም ቁጥር በዚህ ደረሰኝ ላይ ማግኘት አልቻልን።",
     success: "እናመሰግናለን። ደረሰኝዎ ተረጋግጧል፣ መልእክቱንም እናደርሳለን።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
     spreadsheetError: "ጥያቄውን በቀጥታ መመዝገብ አልቻልንም። እባክዎ ደግመው ይሞክሩ።",
@@ -1153,16 +1153,39 @@ export default function App() {
         console.info("[receipt] Reading Telebirr receipt screenshot", { name: file.name });
         const receiptText = await readReceiptTextWithOcr(file);
 
-        if (!hasTelebirrIdentity(receiptText)) {
+        if (!receiptText.trim()) {
           setCbeReceiptUrl("");
           setReceiptOcrText(receiptText);
           setReceiptError(formText.receiptQrMissing);
           return;
         }
 
+        const normalizedText = normalizeComparableText(receiptText);
+        if (!normalizedText.includes("telebirr")) {
+          setCbeReceiptUrl("");
+          setReceiptOcrText(receiptText);
+          setReceiptError(formText.receiptNotTelebirr);
+          return;
+        }
+
+        const accountFirstName = telebirrAccountName.split(" ")[0].toLowerCase();
+        if (!normalizedText.includes(accountFirstName)) {
+          setCbeReceiptUrl("");
+          setReceiptOcrText(receiptText);
+          setReceiptError(formText.receiptNameMismatch);
+          return;
+        }
+
         const transactionNumber = extractTelebirrTransactionNumber(receiptText);
+        if (!transactionNumber) {
+          setCbeReceiptUrl("");
+          setReceiptOcrText(receiptText);
+          setReceiptError(formText.receiptTransactionMissing);
+          return;
+        }
+
         const receiptLink = buildTelebirrReceiptLink(transactionNumber);
-        setCbeReceiptUrl(receiptLink || `telebirr:${telebirrNumber}`);
+        setCbeReceiptUrl(receiptLink);
         setReceiptOcrText(receiptText);
         setReceiptError("");
         return;
