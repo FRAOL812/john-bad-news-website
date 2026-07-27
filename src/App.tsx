@@ -363,9 +363,10 @@ function hasPaypalIdentity(value: string) {
 
 function hasTelebirrIdentity(value: string) {
   const normalizedText = normalizeComparableText(value);
+  const accountFirstName = telebirrAccountName.split(" ")[0].toLowerCase();
   return (
     normalizedText.includes("telebirr") &&
-    (normalizedText.includes("successful") || normalizedText.includes("etb") || normalizedText.includes("transaction"))
+    (normalizedText.includes(accountFirstName) || receiptDigits.includes(accountDigits))
   );
 }
 
