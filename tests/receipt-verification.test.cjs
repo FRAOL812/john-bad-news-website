@@ -1,0 +1,129 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+
+const webhookSource = fs.readFileSync(path.join(__dirname, "..", "google-sheets-webhook.gs"), "utf8");
+
+function receiptHtml({
+  reference = "DGP17W7401",
+  settledAmount = 200,
+  totalPaidAmount = settledAmount + 2,
+  receiver = "Fraol Eshetu Hailu",
+  receiverAccount = "2519****5322",
+  status = "Completed",
+} = {}) {
+  return `<!doctype html>
+    <html><head><title>telebirr receipt</title></head><body>
+      <table>
+        <tr><td>telebirr Transaction information</td></tr>
+        <tr><td>Payer Name</td><td>Test Customer</td></tr>
+        <tr><td>Credited Party name</td><td>${receiver}</td></tr>
+        <tr><td>Credited party account no</td><td>${receiverAccount}</td></tr>
+        <tr><td>transaction status<td>${status}</td></tr>
+        <tr><td>Invoice details</td></tr>
+        <tr><td>Invoice No.</td><td>Payment date</td><td>Settled Amount</td></tr>
+        <tr><td>${reference}</td><td>25-07-2024 01:24:29</td><td>${settledAmount} Birr</td></tr>
+        <tr><td>Service fee</td><td>2 Birr</td></tr>
+        <tr><td>Total Paid Amount</td><td>${totalPaidAmount} Birr</td></tr>
+      </table>
+    </body></html>`;
+}
+
+function loadWebhook({ html = receiptHtml(), statusCode = 200 } = {}) {
+  const fetchCalls = [];
+  const context = {
+    console,
+    UrlFetchApp: {
+      fetch(url, options) {
+        fetchCalls.push({ url, options });
+        return {
+          getResponseCode: () => statusCode,
+          getContentText: () => html,
+        };
+      },
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(`${webhookSource}\n;globalThis.__testApi = { verifyTelebirrReceipt };`, context);
+  return { verify: context.__testApi.verifyTelebirrReceipt, fetchCalls };
+}
+
+function submission({ tier = "basic", special = 0, reference = "DGP17W7401" } = {}) {
+  return {
+    paymentMethod: "telebirr",
+    serviceTier: `${tier} - test`,
+    specialRequestAmount: special ? String(special) : "",
+    receiptVerificationValue: `https://transactioninfo.ethiotelecom.et/receipt/${reference}`,
+    receiptOcrText: `Successful Transaction To: Fraol Transaction Number: ${reference}`,
+    telebirrReceiptVerified: true,
+    receiptFile: "receipt.jpg",
+  };
+}
+
+function verify(options = {}) {
+  const runtime = loadWebhook({ html: options.html, statusCode: options.statusCode });
+  const result = runtime.verify(options.data || submission(), new Date("2026-08-16T12:00:00Z"));
+  return { result, fetchCalls: runtime.fetchCalls };
+}
+
+test("basic plan verifies the settled 200 ETB, not the fee-inclusive 202 ETB total", () => {
+  const { result, fetchCalls } = verify();
+  assert.equal(result.ok, true);
+  assert.equal(result.amount, 200);
+  assert.equal(result.reference, "DGP17W7401");
+  assert.equal(result.receiver, "Fraol Eshetu Hailu");
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, "https://transactioninfo.ethiotelecom.et/receipt/DGP17W7401");
+});
+
+for (const paymentPlan of [
+  { name: "basic", tier: "basic", special: 0, amount: 200 },
+  { name: "urgent", tier: "urgent", special: 0, amount: 800 },
+  { name: "basic plus special request", tier: "basic", special: 50, amount: 250 },
+  { name: "urgent plus special request", tier: "urgent", special: 125, amount: 925 },
+]) {
+  test(`${paymentPlan.name} plan verifies against the official settled amount`, () => {
+    const data = submission({ tier: paymentPlan.tier, special: paymentPlan.special });
+    const html = receiptHtml({ settledAmount: paymentPlan.amount });
+    const { result } = verify({ data, html });
+    assert.equal(result.ok, true);
+    assert.equal(result.amount, paymentPlan.amount);
+  });
+}
+
+test("rejects an official settled amount that does not match the selected plan", () => {
+  const { result } = verify({ html: receiptHtml({ settledAmount: 199 }) });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /Receipt amount must be 200 ETB/);
+});
+
+test("rejects a receipt for a different recipient", () => {
+  const html = receiptHtml({ receiver: "Different Person", receiverAccount: "2519****0000" });
+  const { result } = verify({ html });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /Telebirr recipient must be/);
+});
+
+test("rejects a transaction that is not completed", () => {
+  const { result } = verify({ html: receiptHtml({ status: "Pending" }) });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /transaction is not completed/);
+});
+
+test("rejects when the official reference differs from the receipt link", () => {
+  const { result } = verify({ html: receiptHtml({ reference: "OTHER12345" }) });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /reference does not match/);
+});
+
+test("rejects invalid and unavailable official receipt pages", () => {
+  const invalidPage = verify({ html: "<html><body>Not a receipt</body></html>" }).result;
+  assert.equal(invalidPage.ok, false);
+  assert.match(invalidPage.errors.join(" "), /invalid receipt page/);
+
+  const unavailablePage = verify({ statusCode: 503 }).result;
+  assert.equal(unavailablePage.ok, false);
+  assert.match(unavailablePage.errors.join(" "), /HTTP 503/);
+});

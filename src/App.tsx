@@ -1160,22 +1160,6 @@ export default function App() {
           return;
         }
 
-        const normalizedText = normalizeComparableText(receiptText);
-        if (!normalizedText.includes("telebirr")) {
-          setCbeReceiptUrl("");
-          setReceiptOcrText(receiptText);
-          setReceiptError(formText.receiptNotTelebirr);
-          return;
-        }
-
-        const accountFirstName = telebirrAccountName.split(" ")[0].toLowerCase();
-        if (!normalizedText.includes(accountFirstName)) {
-          setCbeReceiptUrl("");
-          setReceiptOcrText(receiptText);
-          setReceiptError(formText.receiptNameMismatch);
-          return;
-        }
-
         const transactionNumber = extractTelebirrTransactionNumber(receiptText);
         if (!transactionNumber) {
           setCbeReceiptUrl("");

@@ -1,7 +1,7 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-07-17-telebirr-paypal-only";
+const WEBHOOK_VERSION = "2026-08-16-telebirr-receipt-fetch";
 const BASE_PRICE_BIRR = 200;
 const URGENT_PRICE_BIRR = 800;
 const PAYPAL_BASE_PRICE_USD = 25;
@@ -60,20 +60,30 @@ function verifyPaymentReceipt(data, receivedAt) {
 
 function verifyTelebirrReceipt(data, receivedAt) {
   const text = cleanCell(data.receiptOcrText);
-  const compact = normalizeComparable(text);
-  const digits = text.replace(/\D/g, "");
   const expected = getExpectedAmount(data);
-  const amount = extractEtbAmount(text);
   const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
-  const reference = extractTelebirrReceiptId(receiptLink) || extractReference(text);
-  const paymentDate = extractPaymentDate(text);
-  const hasScannedReceipt = Boolean(data.telebirrReceiptVerified && data.receiptFile && text);
+  const linkReference = extractTelebirrReceiptId(receiptLink);
   const errors = [];
+  let officialReceipt = null;
 
-  if (!hasScannedReceipt && !receiptLink) errors.push("Upload a Telebirr receipt screenshot or paste a valid Telebirr receipt link");
-  if (hasScannedReceipt) {
-    if (compact.indexOf("telebirr") === -1) errors.push("The screenshot is not a Telebirr receipt");
-    if (compact.indexOf(normalizeComparable(TELEBIRR_NAME)) === -1 && digits.indexOf(TELEBIRR_NUMBER) === -1) {
+  if (!receiptLink) {
+    errors.push("A valid Telebirr transaction receipt link was not found");
+  } else {
+    try {
+      officialReceipt = fetchTelebirrReceipt(receiptLink);
+    } catch (error) {
+      errors.push(`Could not verify the Telebirr transaction: ${String(error && error.message ? error.message : error)}`);
+    }
+  }
+
+  const reference = officialReceipt ? officialReceipt.reference : linkReference;
+  const paymentDate = officialReceipt ? officialReceipt.paymentDate : null;
+  const amount = officialReceipt ? officialReceipt.settledAmount : 0;
+
+  if (officialReceipt) {
+    if (normalizeComparable(officialReceipt.status) !== "completed") errors.push("Telebirr transaction is not completed");
+    if (normalizeComparable(reference) !== normalizeComparable(linkReference)) errors.push("Telebirr receipt reference does not match the transaction link");
+    if (normalizeComparable(officialReceipt.receiver) !== normalizeComparable(TELEBIRR_NAME) && officialReceipt.receiverAccount.replace(/\D/g, "").slice(-4) !== TELEBIRR_NUMBER.slice(-4)) {
       errors.push(`Telebirr recipient must be ${TELEBIRR_NAME} or ${TELEBIRR_NUMBER}`);
     }
     appendAmountErrors(errors, amount, expected, "ETB");
@@ -81,9 +91,74 @@ function verifyTelebirrReceipt(data, receivedAt) {
   if (!reference) errors.push("Telebirr transaction reference was not found");
   if (paymentDate && receivedAt.getTime() - paymentDate.getTime() < -300000) errors.push("Telebirr payment date/time is in the future");
   return {
-    ok: errors.length === 0, errors, amount: amount || expected, paymentDate, reference,
-    payer: extractPayer(text) || "Telebirr customer", receiver: TELEBIRR_NAME, receiverAccount: TELEBIRR_NUMBER,
+    ok: errors.length === 0, errors, amount, paymentDate, reference,
+    payer: officialReceipt ? officialReceipt.payer : "", receiver: officialReceipt ? officialReceipt.receiver : "", receiverAccount: officialReceipt ? officialReceipt.receiverAccount : "",
   };
+}
+
+function fetchTelebirrReceipt(receiptLink) {
+  const response = UrlFetchApp.fetch(receiptLink, {
+    followRedirects: true,
+    muteHttpExceptions: true,
+    validateHttpsCertificates: true,
+  });
+  const statusCode = response.getResponseCode();
+  const html = response.getContentText();
+  if (statusCode !== 200) throw new Error(`receipt service returned HTTP ${statusCode}`);
+  if (normalizeComparable(html).indexOf("telebirrtransactioninformation") === -1) throw new Error("receipt service returned an invalid receipt page");
+
+  const cells = extractHtmlCells(html);
+  const invoiceHeader = findReceiptCell(cells, "Invoice No.");
+  const receipt = {
+    payer: getReceiptCellAfter(cells, "Payer Name"),
+    receiver: getReceiptCellAfter(cells, "Credited Party name"),
+    receiverAccount: getReceiptCellAfter(cells, "Credited party account no"),
+    status: extractTelebirrStatus(html),
+    reference: invoiceHeader >= 0 ? cleanReceiptField(cells[invoiceHeader + 3]) : "",
+    paymentDate: invoiceHeader >= 0 ? parseReceiptDate(cells[invoiceHeader + 4]) : null,
+    settledAmount: invoiceHeader >= 0 ? parseMoney(cells[invoiceHeader + 5]) : 0,
+  };
+
+  if (!receipt.reference || !receipt.receiver || !receipt.status || !receipt.settledAmount) {
+    throw new Error("required receipt details were not found");
+  }
+  return receipt;
+}
+
+function extractHtmlCells(html) {
+  const cells = [];
+  const pattern = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
+  let match;
+  while ((match = pattern.exec(String(html || ""))) !== null) {
+    const text = match[1]
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;|&#160;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    cells.push(text);
+  }
+  return cells;
+}
+
+function findReceiptCell(cells, label) {
+  const expected = normalizeComparable(label);
+  for (let i = 0; i < cells.length; i += 1) {
+    if (normalizeComparable(cells[i]).indexOf(expected) !== -1) return i;
+  }
+  return -1;
+}
+
+function getReceiptCellAfter(cells, label) {
+  const index = findReceiptCell(cells, label);
+  return index >= 0 ? cleanReceiptField(cells[index + 1]) : "";
+}
+
+function extractTelebirrStatus(html) {
+  const match = String(html || "").match(/transaction status[\s\S]{0,300}?<td\b[^>]*>\s*([^<]+)<\/td>/i);
+  return match ? cleanReceiptField(match[1]) : "";
 }
 
 function normalizeTelebirrReceiptLink(value) {
