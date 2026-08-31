@@ -3,7 +3,7 @@
 // Example: window.__RUNTIME_CONFIG__ = { SPREADSHEET_WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbwTZ3jjqXOdomaleHiztK-N4FlZY3ROk22Ofq1dLmYbUazghCbKb4PloI1s05LmlRfP/exec" };
 window.__RUNTIME_CONFIG__ = window.__RUNTIME_CONFIG__ || {
   API_BASE: "",
-  SPREADSHEET_WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbwlJIErZauXy0tTbt_rPwhXVY40mfWeUkhSdd2_5mIe946-NgFZvPUGDHp65O-OQvBc/exec",
+  SPREADSHEET_WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbz4HOi6XaUVxlwRD98zt07GBzzsyIDvjfKP385uZdLfFFAl0cy0GRdJfmwMSZsIuOuh/exec",
   // Telebirr account details (for local payments)
   TELEBIRR_NUMBER: "0913885322",
   TELEBIRR_ACCOUNT_NAME: "Fraol Eshetu Hailu",
