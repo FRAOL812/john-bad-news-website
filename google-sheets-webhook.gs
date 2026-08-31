@@ -1,7 +1,7 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-09-01-fast-pending-dedup";
+const WEBHOOK_VERSION = "2026-09-01-pending-payment-parties";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
@@ -70,6 +70,8 @@ function verifyPaymentReceipt(data, receivedAt) {
 function queueTelebirrForManualVerification(data) {
   const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
   const reference = extractTelebirrReceiptId(receiptLink);
+  const receiptText = cleanCell(data.receiptOcrText);
+  const payer = extractPayer(receiptText);
   const errors = [];
   if (!receiptLink) errors.push("A valid Telebirr transaction receipt link was not found");
   if (!reference) errors.push("Telebirr transaction reference was not found");
@@ -81,9 +83,9 @@ function queueTelebirrForManualVerification(data) {
     amount: 0,
     paymentDate: null,
     reference,
-    payer: "",
-    receiver: "",
-    receiverAccount: "",
+    payer: payer || "Not extracted - manual review",
+    receiver: `${TELEBIRR_NAME} (pending verification)`,
+    receiverAccount: `${TELEBIRR_NUMBER} (pending verification)`,
   };
 }
 
@@ -284,7 +286,7 @@ function extractReference(text) {
 
 function extractPayer(text) {
   const match = String(text || "").match(/(?:Payer|Sender|From|Paid by)(?:\s+Name)?\s*:?\s*([A-Za-z]+(?:\s+[A-Za-z]+){1,4})/i);
-  return match ? cleanReceiptField(match[1]) : "";
+  return match ? cleanReceiptField(match[1].replace(/\s+(?:Transaction|Payment|Receipt|Reference|Credited|Account|Invoice)(?:\s+.*)?$/i, "")) : "";
 }
 
 function extractPaymentDate(text) {
