@@ -8,7 +8,7 @@ const webhookSource = fs.readFileSync(path.join(__dirname, "..", "google-sheets-
 
 function receiptHtml({
   reference = "DGP17W7401",
-  settledAmount = 200,
+  settledAmount = 50,
   totalPaidAmount = settledAmount + 2,
   receiver = "Fraol Eshetu Hailu",
   receiverAccount = "2519****5322",
@@ -68,10 +68,10 @@ function verify(options = {}) {
   return { result, fetchCalls: runtime.fetchCalls };
 }
 
-test("basic plan verifies the settled 200 ETB, not the fee-inclusive 202 ETB total", () => {
+test("basic plan verifies the settled 50 ETB, not the fee-inclusive total", () => {
   const { result, fetchCalls } = verify();
   assert.equal(result.ok, true);
-  assert.equal(result.amount, 200);
+  assert.equal(result.amount, 50);
   assert.equal(result.reference, "DGP17W7401");
   assert.equal(result.receiver, "Fraol Eshetu Hailu");
   assert.equal(fetchCalls.length, 1);
@@ -79,10 +79,10 @@ test("basic plan verifies the settled 200 ETB, not the fee-inclusive 202 ETB tot
 });
 
 for (const paymentPlan of [
-  { name: "basic", tier: "basic", special: 0, amount: 200 },
-  { name: "urgent", tier: "urgent", special: 0, amount: 800 },
-  { name: "basic plus special request", tier: "basic", special: 50, amount: 250 },
-  { name: "urgent plus special request", tier: "urgent", special: 125, amount: 925 },
+  { name: "basic", tier: "basic", special: 0, amount: 50 },
+  { name: "urgent", tier: "urgent", special: 0, amount: 200 },
+  { name: "basic plus special request", tier: "basic", special: 50, amount: 100 },
+  { name: "urgent plus special request", tier: "urgent", special: 125, amount: 325 },
 ]) {
   test(`${paymentPlan.name} plan verifies against the official settled amount`, () => {
     const data = submission({ tier: paymentPlan.tier, special: paymentPlan.special });
@@ -94,9 +94,9 @@ for (const paymentPlan of [
 }
 
 test("rejects an official settled amount that does not match the selected plan", () => {
-  const { result } = verify({ html: receiptHtml({ settledAmount: 199 }) });
+  const { result } = verify({ html: receiptHtml({ settledAmount: 49 }) });
   assert.equal(result.ok, false);
-  assert.match(result.errors.join(" "), /Receipt amount must be 200 ETB/);
+  assert.match(result.errors.join(" "), /Receipt amount must be 50 ETB/);
 });
 
 test("rejects a receipt for a different recipient", () => {

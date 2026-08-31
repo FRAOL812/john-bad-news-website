@@ -79,10 +79,10 @@ declare global {
   }
 }
 
-const basePriceBirr = 200;
-const urgentPriceBirr = 800;
-const abroadBasePriceUsd = 25;
-const abroadUrgentPriceUsd = 75;
+const basePriceBirr = 50;
+const urgentPriceBirr = 200;
+const abroadBasePriceUsd = 15;
+const abroadUrgentPriceUsd = 50;
 const paypalDisplayName = window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis";
 const paypalUsername = window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9";
 const telebirrNumber = window.__RUNTIME_CONFIG__?.TELEBIRR_NUMBER ?? "0913885322";
@@ -497,10 +497,10 @@ const serviceSummaryTranslations = {
     youtubeSteps: ["Subscribe", "Follow news deliveries", "Watch new episodes"],
     youtubeLink: "Subscribe on YouTube",
     plans: [
-      { name: "Local Basic", price: "200 Birr", detail: "Standard delivery", badge: "Basic" },
-      { name: "Local Urgent", price: "800 Birr", detail: "24-hour update", badge: "Fast" },
-      { name: "Abroad Basic", price: "25 USD", detail: "WhatsApp contact", badge: "Abroad" },
-      { name: "Abroad Urgent", price: "75 USD", detail: "Priority WhatsApp contact", badge: "Priority" },
+      { name: "Local Basic", price: "50 Birr", detail: "Standard delivery", badge: "Basic" },
+      { name: "Local Urgent", price: "200 Birr", detail: "24-hour update", badge: "Fast" },
+      { name: "Abroad Basic", price: "15 USD", detail: "WhatsApp contact", badge: "Abroad" },
+      { name: "Abroad Urgent", price: "50 USD", detail: "Priority WhatsApp contact", badge: "Priority" },
     ],
   },
   am: {
@@ -511,10 +511,10 @@ const serviceSummaryTranslations = {
     youtubeSteps: ["Subscribe ያድርጉ", "መርዶ ማድረሻዎችን ይከታተሉ", "አዳዲስ episodes ይመልከቱ"],
     youtubeLink: "በYouTube Subscribe ያድርጉ",
     plans: [
-      { name: "የኢትዮጵያ መደበኛ", price: "200 ብር", detail: "መደበኛ አገልግሎት", badge: "መደበኛ" },
-      { name: "የኢትዮጵያ አስቸኳይ", price: "800 ብር", detail: "በ24 ሰአት ውስጥ ማሳወቅ", badge: "ፈጣን" },
-      { name: "የውጭ መደበኛ", price: "25 USD", detail: "በWhatsApp ግንኙነት", badge: "ውጭ" },
-      { name: "የውጭ አስቸኳይ", price: "75 USD", detail: "ቅድሚያ ያለው WhatsApp ግንኙነት", badge: "ቅድሚያ" },
+      { name: "የኢትዮጵያ መደበኛ", price: "50 ብር", detail: "መደበኛ አገልግሎት", badge: "መደበኛ" },
+      { name: "የኢትዮጵያ አስቸኳይ", price: "200 ብር", detail: "በ24 ሰአት ውስጥ ማሳወቅ", badge: "ፈጣን" },
+      { name: "የውጭ መደበኛ", price: "15 USD", detail: "በWhatsApp ግንኙነት", badge: "ውጭ" },
+      { name: "የውጭ አስቸኳይ", price: "50 USD", detail: "ቅድሚያ ያለው WhatsApp ግንኙነት", badge: "ቅድሚያ" },
     ],
   },
 };
@@ -547,27 +547,27 @@ const processTranslations = {
 
 const serviceTierTranslations: Record<"en" | "am", Record<ServiceTierId, { label: string; detail: string }>> = {
   en: {
-    basic: { label: "Basic", detail: "200 Birr / 25 USD" },
-    urgent: { label: "Urgent", detail: "800 Birr / 75 USD" },
+    basic: { label: "Basic", detail: "50 Birr / 15 USD" },
+    urgent: { label: "Urgent", detail: "200 Birr / 50 USD" },
   },
   am: {
-    basic: { label: "መደበኛ", detail: "200 ብር / 25 USD" },
-    urgent: { label: "አስቸኳይ", detail: "800 ብር / 75 USD" },
+    basic: { label: "መደበኛ", detail: "50 ብር / 15 USD" },
+    urgent: { label: "አስቸኳይ", detail: "200 ብር / 50 USD" },
   },
 };
 
 const paymentOptionTranslations: Record<"en" | "am", Record<PaymentOptionId, string>> = {
   en: {
-    "local-basic": "Local Basic - 200 Birr",
-    "local-urgent": "Local Urgent - 800 Birr",
-    "abroad-basic": "Abroad Basic - 25 USD",
-    "abroad-urgent": "Abroad Urgent - 75 USD",
+    "local-basic": "Local Basic - 50 Birr",
+    "local-urgent": "Local Urgent - 200 Birr",
+    "abroad-basic": "Abroad Basic - 15 USD",
+    "abroad-urgent": "Abroad Urgent - 50 USD",
   },
   am: {
-    "local-basic": "የኢትዮጵያ መደበኛ - 200 ብር",
-    "local-urgent": "የኢትዮጵያ አስቸኳይ - 800 ብር",
-    "abroad-basic": "የውጭ መደበኛ - 25 USD",
-    "abroad-urgent": "የውጭ አስቸኳይ - 75 USD",
+    "local-basic": "የኢትዮጵያ መደበኛ - 50 ብር",
+    "local-urgent": "የኢትዮጵያ አስቸኳይ - 200 ብር",
+    "abroad-basic": "የውጭ መደበኛ - 15 USD",
+    "abroad-urgent": "የውጭ አስቸኳይ - 50 USD",
   },
 };
 
@@ -591,7 +591,7 @@ const formTranslations = {
     accountName: telebirrAccountName,
     paypalAccount: `PayPal: ${paypalDisplayName} (${paypalUsername})`,
     basePrice: "Selected price",
-    urgentPrice: "Urgent: 800 Birr / 75 USD",
+    urgentPrice: "Urgent: 200 Birr / 50 USD",
     abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
     liveNotice: "For YouTube Live content, applicants will be informed before anything is shown live.",
     specialRequestAmount: "Special Request Payment",
@@ -643,7 +643,7 @@ const formTranslations = {
     accountName: telebirrAccountName,
     paypalAccount: `PayPal: ${paypalDisplayName} (${paypalUsername})`,
     basePrice: "የተመረጠው ዋጋ",
-    urgentPrice: "አስቸኳይ፡ 800 ብር / 75 USD",
+    urgentPrice: "አስቸኳይ፡ 200 ብር / 50 USD",
     abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
     liveNotice: "ለYouTube Live content ከማሳየታችን በፊት አመልካቾችን እናሳውቃለን።",
     specialRequestAmount: "የልዩ ጥያቄ ክፍያ",
