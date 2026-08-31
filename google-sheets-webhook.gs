@@ -16,7 +16,7 @@ const REQUEST_HEADERS = [
   "Received At", "Submission ID", "Payment Status", "Done News", "Sender Name",
   "Sender Phone", "Bad News", "Requested Receiver", "Claimed Amount", "Verified Amount",
   "Payment Payer", "Payment Receiver", "Payment Account", "Reference No", "Receipt Type",
-  "Audio Link", "Receipt File", "Language", "Reject Reason",
+  "Audio Link", "Receipt File", "Identity Privacy", "Language", "Reject Reason",
 ];
 
 function setupAuthorization() {
@@ -272,7 +272,7 @@ function isDuplicateReference(spreadsheet, reference) {
 function appendSubmission(spreadsheet, sheetName, receivedAt, data, verification, audioLink, status) {
   const sheet = getSheet(spreadsheet, sheetName);
   ensureHeader(sheet, REQUEST_HEADERS);
-  const row = [receivedAt.toLocaleString(), cleanCell(data.id), status, false, cleanCell(data.name), getSenderPhone(data), cleanCell(data.badNews), cleanCell(data.receiver), formatClaimedPayment(data), verification.amount || "", cleanReceiptField(verification.payer), cleanReceiptField(verification.receiver), cleanReceiptField(verification.receiverAccount), cleanReceiptField(verification.reference), cleanCell(data.paymentMethod).toUpperCase(), audioLink, cleanCell(data.receiptFile), cleanCell(data.language), ""];
+  const row = [receivedAt.toLocaleString(), cleanCell(data.id), status, false, cleanCell(data.name), getSenderPhone(data), cleanCell(data.badNews), cleanCell(data.receiver), formatClaimedPayment(data), verification.amount || "", cleanReceiptField(verification.payer), cleanReceiptField(verification.receiver), cleanReceiptField(verification.receiverAccount), cleanReceiptField(verification.reference), cleanCell(data.paymentMethod).toUpperCase(), audioLink, cleanCell(data.receiptFile), data.keepIdentityPrivate === true ? "Keep anonymous" : "May share identity", cleanCell(data.language), ""];
   sheet.appendRow(row);
   sheet.getRange(sheet.getLastRow(), 4).insertCheckboxes();
 }

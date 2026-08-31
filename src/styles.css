@@ -828,6 +828,36 @@ label span svg {
   color: #8c8c8c;
 }
 
+.contact-card .privacy-checkbox {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 21, 36, 0.28);
+  border-radius: 7px;
+  background: rgba(18, 18, 18, 0.72);
+  cursor: pointer;
+}
+
+.contact-card .privacy-checkbox input {
+  width: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  accent-color: #e21524;
+}
+
+.contact-card .privacy-checkbox > span {
+  display: grid;
+  gap: 3px;
+}
+
+.contact-card .privacy-checkbox small {
+  color: #b8b8b8;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .phone-input-group {
   display: grid;
   grid-template-columns: minmax(104px, max-content) minmax(0, 1fr);

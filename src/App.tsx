@@ -55,6 +55,7 @@ type SubmissionRecord = {
   telebirrReceiptVerified?: boolean;
   paypalReceiptVerified?: boolean;
   receiptFile: string;
+  keepIdentityPrivate: boolean;
   language: "en" | "am";
 };
 
@@ -576,6 +577,8 @@ const formTranslations = {
     intro: "Send your bad news. We will deliver it for you.",
     name: "Name",
     namePlaceholder: "Enter your full name",
+    keepIdentityPrivate: "Keep my identity anonymous",
+    keepIdentityPrivateHelp: "Do not reveal my name or contact details to the receiver.",
     phone: "Sender Phone Number",
     receiverPhone: "Receiver Phone Number",
     message: "Bad News",
@@ -626,6 +629,8 @@ const formTranslations = {
     intro: "መልእክትዎን ይላኩ። እኛ እናደርሰዋለን።",
     name: "ስም",
     namePlaceholder: "ሙሉ ስምዎን ያስገቡ",
+    keepIdentityPrivate: "ማንነቴ እንዳይታወቅ",
+    keepIdentityPrivateHelp: "ስሜን ወይም የግንኙነት መረጃዬን ለተቀባዩ አታሳውቁ።",
     phone: "የላኪ ስልክ ቁጥር",
     receiverPhone: "የተቀባይ ስልክ ቁጥር",
     message: "መጥፎ ዜና",
@@ -1046,6 +1051,7 @@ export default function App() {
       telebirrReceiptVerified: paymentMethod === "telebirr",
       paypalReceiptVerified: paymentMethod === "paypal",
       receiptFile: receiptName || (receiptLink ? "Telebirr receipt link" : ""),
+      keepIdentityPrivate: form.get("keepIdentityPrivate") === "on",
       language,
     };
 
@@ -1391,6 +1397,14 @@ export default function App() {
                     style={{ flex: 1 }}
                   />
                 </div>
+              </label>
+
+              <label className="privacy-checkbox">
+                <input name="keepIdentityPrivate" type="checkbox" />
+                <span>
+                  <strong>Do not share my identity / ማንነቴ እንዳይታወቅ</strong>
+                  <small>Do not reveal my name or contact details to the receiver. / ስሜን ወይም የግንኙነት መረጃዬን ለተቀባዩ አታሳውቁ።</small>
+                </span>
               </label>
 
               <label>
