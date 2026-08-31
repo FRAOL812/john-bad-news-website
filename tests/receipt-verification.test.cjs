@@ -131,19 +131,11 @@ test("rejects invalid and unavailable official receipt pages", () => {
   assert.match(unavailablePage.errors.join(" "), /HTTP 503/);
 });
 
-test("falls back to the Ethiotelecom IP when Apps Script cannot resolve the receipt hostname", () => {
+test("marks the receipt pending when Apps Script cannot resolve the official receipt hostname", () => {
   const { result, fetchCalls } = verify({ failHostnameFetch: true });
-  assert.equal(result.ok, true);
-  assert.equal(fetchCalls.length, 4);
-  assert.equal(fetchCalls[3].url, "https://196.188.116.120/receipt/DGP17W7401");
-  assert.equal(fetchCalls[3].options.headers.Host, "transactioninfo.ethiotelecom.et");
-});
-
-test("marks the receipt pending when Apps Script cannot reach either official receipt route", () => {
-  const { result, fetchCalls } = verify({ failAllFetches: true });
   assert.equal(result.ok, false);
   assert.equal(result.pending, true);
   assert.equal(result.errors.length, 0);
   assert.equal(result.reference, "DGP17W7401");
-  assert.equal(fetchCalls.length, 4);
+  assert.equal(fetchCalls.length, 3);
 });

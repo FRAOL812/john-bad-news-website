@@ -8,7 +8,6 @@ const PAYPAL_BASE_PRICE_USD = 15;
 const PAYPAL_URGENT_PRICE_USD = 50;
 const TELEBIRR_NAME = "Fraol Eshetu Hailu";
 const TELEBIRR_NUMBER = "0913885322";
-const TELEBIRR_RECEIPT_IP = "196.188.116.120";
 const PAYPAL_NAME = "Yonatan Woldegiorgis";
 const PAYPAL_USERNAME = "@YonatanWoldegiorgis9";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
@@ -129,23 +128,8 @@ function fetchTelebirrReceipt(receiptLink) {
     if (attempt < 3 && typeof Utilities !== "undefined") Utilities.sleep(attempt * 500);
   }
   if (!response) {
-    try {
-      const receiptPath = receiptLink.replace(/^https:\/\/transactioninfo\.ethiotelecom\.et/i, "");
-      response = UrlFetchApp.fetch(`https://${TELEBIRR_RECEIPT_IP}${receiptPath}`, {
-        followRedirects: true,
-        muteHttpExceptions: true,
-        validateHttpsCertificates: false,
-        headers: {
-          Host: "transactioninfo.ethiotelecom.et",
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      });
-    } catch (fallbackError) {
-      const primaryMessage = String(lastError && lastError.message ? lastError.message : lastError || "unknown primary error");
-      const fallbackMessage = String(fallbackError && fallbackError.message ? fallbackError.message : fallbackError || "unknown fallback error");
-      throw new Error(`RECEIPT_SERVICE_UNAVAILABLE: primary=${primaryMessage}; fallback=${fallbackMessage}`);
-    }
+    const primaryMessage = String(lastError && lastError.message ? lastError.message : lastError || "receipt service was unavailable");
+    throw new Error(`RECEIPT_SERVICE_UNAVAILABLE: ${primaryMessage}`);
   }
   const statusCode = response.getResponseCode();
   const html = response.getContentText();
