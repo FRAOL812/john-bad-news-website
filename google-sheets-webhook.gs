@@ -1,17 +1,18 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-09-01-pending-manual-fallback";
+const WEBHOOK_VERSION = "2026-09-01-fast-pending-dedup";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
 const PAYPAL_URGENT_PRICE_USD = 50;
 const TELEBIRR_NAME = "Fraol Eshetu Hailu";
 const TELEBIRR_NUMBER = "0913885322";
+const ENABLE_TELEBIRR_REMOTE_VERIFICATION = false;
 const PAYPAL_NAME = "Yonatan Woldegiorgis";
 const PAYPAL_USERNAME = "@YonatanWoldegiorgis9";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
-const FINAL_REQUEST_SHEETS = [VERIFIED_SHEET_NAME];
+const FINAL_REQUEST_SHEETS = [VERIFIED_SHEET_NAME, INCOMING_SHEET_NAME];
 const REQUEST_HEADERS = [
   "Received At", "Submission ID", "Payment Status", "Done News", "Sender Name",
   "Sender Phone", "Bad News", "Requested Receiver", "Claimed Amount", "Verified Amount",
@@ -58,9 +59,32 @@ function doPost(event) {
 
 function verifyPaymentReceipt(data, receivedAt) {
   const method = cleanCell(data.paymentMethod).toLowerCase();
-  if (method === "telebirr") return verifyTelebirrReceipt(data, receivedAt);
+  if (method === "telebirr") {
+    if (!ENABLE_TELEBIRR_REMOTE_VERIFICATION) return queueTelebirrForManualVerification(data);
+    return verifyTelebirrReceipt(data, receivedAt);
+  }
   if (method === "paypal") return verifyPaypalReceipt(data);
   return { ok: false, errors: ["Unsupported payment method. Select Telebirr or PayPal."] };
+}
+
+function queueTelebirrForManualVerification(data) {
+  const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
+  const reference = extractTelebirrReceiptId(receiptLink);
+  const errors = [];
+  if (!receiptLink) errors.push("A valid Telebirr transaction receipt link was not found");
+  if (!reference) errors.push("Telebirr transaction reference was not found");
+  if (!data.receiptFile) errors.push("A Telebirr receipt screenshot is required");
+  return {
+    ok: false,
+    pending: errors.length === 0,
+    errors,
+    amount: 0,
+    paymentDate: null,
+    reference,
+    payer: "",
+    receiver: "",
+    receiverAccount: "",
+  };
 }
 
 function verifyTelebirrReceipt(data, receivedAt) {

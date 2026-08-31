@@ -49,8 +49,8 @@ function loadWebhook({ html = receiptHtml(), statusCode = 200, failHostnameFetch
     },
   };
   vm.createContext(context);
-  vm.runInContext(`${webhookSource}\n;globalThis.__testApi = { verifyTelebirrReceipt };`, context);
-  return { verify: context.__testApi.verifyTelebirrReceipt, fetchCalls };
+  vm.runInContext(`${webhookSource}\n;globalThis.__testApi = { verifyTelebirrReceipt, queueTelebirrForManualVerification };`, context);
+  return { verify: context.__testApi.verifyTelebirrReceipt, queuePending: context.__testApi.queueTelebirrForManualVerification, fetchCalls };
 }
 
 function submission({ tier = "basic", special = 0, reference = "DGP17W7401" } = {}) {
@@ -138,4 +138,14 @@ test("marks the receipt pending when Apps Script cannot resolve the official rec
   assert.equal(result.errors.length, 0);
   assert.equal(result.reference, "DGP17W7401");
   assert.equal(fetchCalls.length, 3);
+});
+
+test("queues a valid Telebirr submission immediately without a remote request", () => {
+  const runtime = loadWebhook();
+  const result = runtime.queuePending(submission());
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, true);
+  assert.equal(result.reference, "DGP17W7401");
+  assert.equal(result.errors.length, 0);
+  assert.equal(runtime.fetchCalls.length, 0);
 });
