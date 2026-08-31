@@ -607,7 +607,7 @@ const formTranslations = {
     receiptLink: "Telebirr receipt link",
     receiptLinkPlaceholder: "https://transactioninfo.ethiotelecom.et/receipt/DGB6Q7N5DM",
     receiptLinkInvalid: "Enter a valid Telebirr receipt link from transactioninfo.ethiotelecom.et.",
-    receiptReady: "Receipt identity verified",
+    receiptReady: "Receipt details detected. Final verification happens when you submit.",
     receiptChecking: "Checking receipt screenshot...",
     receiptCheckingWait: "Please wait while we check your receipt screenshot.",
     receiptMissing: "Please upload your payment receipt before submitting.",
@@ -659,7 +659,7 @@ const formTranslations = {
     receiptLink: "የቴሌብር ደረሰኝ ሊንክ",
     receiptLinkPlaceholder: "https://transactioninfo.ethiotelecom.et/receipt/DGB6Q7N5DM",
     receiptLinkInvalid: "ከ transactioninfo.ethiotelecom.et የተገኘ ትክክለኛ የቴሌብር ደረሰኝ ሊንክ ያስገቡ።",
-    receiptReady: "የደረሰኝ መረጃ ተረጋግጧል",
+    receiptReady: "የደረሰኝ መረጃ ተገኝቷል። የመጨረሻ ማረጋገጫ ሲልኩ ይከናወናል።",
     receiptChecking: "ደረሰኙ እየተመረመረ ነው...",
     receiptCheckingWait: "እባክዎ ደረሰኙን እስክንመረምር ይጠብቁ።",
     receiptMissing: "ከመላክዎ በፊት የክፍያ ደረሰኝዎን ይስቀሉ።",
@@ -1515,7 +1515,7 @@ export default function App() {
                     type="url"
                     inputMode="url"
                     placeholder={formText.receiptLinkPlaceholder}
-                    pattern="https://transactioninfo\.ethiotelecom\.et/receipt/[A-Za-z0-9-]{6,64}/?"
+                    pattern={"https://transactioninfo\\.ethiotelecom\\.et/receipt/[A-Za-z0-9\\-]{6,64}/?"}
                   />
                 </label>
               )}

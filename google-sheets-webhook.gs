@@ -1,7 +1,7 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-08-16-telebirr-receipt-fetch";
+const WEBHOOK_VERSION = "2026-08-31-receipt-error-fix";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
@@ -35,7 +35,7 @@ function doPost(event) {
   try {
     const data = JSON.parse(rawBody);
     const verification = verifyPaymentReceipt(data, receivedAt);
-    if (verification.reference && isDuplicateReference(spreadsheet, verification.reference)) {
+    if (verification.ok && verification.reference && isDuplicateReference(spreadsheet, verification.reference)) {
       verification.ok = false;
       verification.errors.push("Transaction reference has already been used");
     }
@@ -97,11 +97,27 @@ function verifyTelebirrReceipt(data, receivedAt) {
 }
 
 function fetchTelebirrReceipt(receiptLink) {
-  const response = UrlFetchApp.fetch(receiptLink, {
-    followRedirects: true,
-    muteHttpExceptions: true,
-    validateHttpsCertificates: true,
-  });
+  let response = null;
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      response = UrlFetchApp.fetch(receiptLink, {
+        followRedirects: true,
+        muteHttpExceptions: true,
+        validateHttpsCertificates: true,
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+      if (response.getResponseCode() < 500) break;
+      lastError = new Error(`receipt service returned HTTP ${response.getResponseCode()}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 3 && typeof Utilities !== "undefined") Utilities.sleep(attempt * 500);
+  }
+  if (!response) throw lastError || new Error("receipt service was unavailable");
   const statusCode = response.getResponseCode();
   const html = response.getContentText();
   if (statusCode !== 200) throw new Error(`receipt service returned HTTP ${statusCode}`);
