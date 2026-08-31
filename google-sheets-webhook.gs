@@ -1,7 +1,7 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-09-01-telebirr-dns-fallback";
+const WEBHOOK_VERSION = "2026-09-01-pending-manual-fallback";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
@@ -36,13 +36,18 @@ function doPost(event) {
   try {
     const data = JSON.parse(rawBody);
     const verification = verifyPaymentReceipt(data, receivedAt);
-    if (verification.ok && verification.reference && isDuplicateReference(spreadsheet, verification.reference)) {
+    if ((verification.ok || verification.pending) && verification.reference && isDuplicateReference(spreadsheet, verification.reference)) {
       verification.ok = false;
+      verification.pending = false;
       verification.errors.push("Transaction reference has already been used");
     }
-    if (!verification.ok) return jsonResponse({ ok: false, errors: verification.errors });
+    if (!verification.ok && !verification.pending) return jsonResponse({ ok: false, errors: verification.errors });
 
     const audioLink = saveAudioFile(data);
+    if (verification.pending) {
+      appendSubmission(spreadsheet, INCOMING_SHEET_NAME, receivedAt, data, verification, audioLink, "Pending manual verification");
+      return jsonResponse({ ok: true, status: "Pending manual verification" });
+    }
     appendSubmission(spreadsheet, INCOMING_SHEET_NAME, receivedAt, data, verification, audioLink, "Incoming");
     appendSubmission(spreadsheet, VERIFIED_SHEET_NAME, receivedAt, data, verification, audioLink, "Verified");
     return jsonResponse({ ok: true, status: "Verified" });
@@ -66,6 +71,7 @@ function verifyTelebirrReceipt(data, receivedAt) {
   const linkReference = extractTelebirrReceiptId(receiptLink);
   const errors = [];
   let officialReceipt = null;
+  let receiptServiceUnavailable = false;
 
   if (!receiptLink) {
     errors.push("A valid Telebirr transaction receipt link was not found");
@@ -73,7 +79,9 @@ function verifyTelebirrReceipt(data, receivedAt) {
     try {
       officialReceipt = fetchTelebirrReceipt(receiptLink);
     } catch (error) {
-      errors.push(`Could not verify the Telebirr transaction: ${String(error && error.message ? error.message : error)}`);
+      const message = String(error && error.message ? error.message : error);
+      if (message.indexOf("RECEIPT_SERVICE_UNAVAILABLE:") === 0) receiptServiceUnavailable = true;
+      else errors.push(`Could not verify the Telebirr transaction: ${message}`);
     }
   }
 
@@ -92,7 +100,9 @@ function verifyTelebirrReceipt(data, receivedAt) {
   if (!reference) errors.push("Telebirr transaction reference was not found");
   if (paymentDate && receivedAt.getTime() - paymentDate.getTime() < -300000) errors.push("Telebirr payment date/time is in the future");
   return {
-    ok: errors.length === 0, errors, amount, paymentDate, reference,
+    ok: Boolean(officialReceipt) && errors.length === 0,
+    pending: receiptServiceUnavailable && Boolean(reference) && errors.length === 0,
+    errors, amount, paymentDate, reference,
     payer: officialReceipt ? officialReceipt.payer : "", receiver: officialReceipt ? officialReceipt.receiver : "", receiverAccount: officialReceipt ? officialReceipt.receiverAccount : "",
   };
 }
@@ -132,7 +142,9 @@ function fetchTelebirrReceipt(receiptLink) {
         },
       });
     } catch (fallbackError) {
-      throw lastError || fallbackError || new Error("receipt service was unavailable");
+      const primaryMessage = String(lastError && lastError.message ? lastError.message : lastError || "unknown primary error");
+      const fallbackMessage = String(fallbackError && fallbackError.message ? fallbackError.message : fallbackError || "unknown fallback error");
+      throw new Error(`RECEIPT_SERVICE_UNAVAILABLE: primary=${primaryMessage}; fallback=${fallbackMessage}`);
     }
   }
   const statusCode = response.getResponseCode();

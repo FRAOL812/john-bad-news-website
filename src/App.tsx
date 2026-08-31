@@ -400,7 +400,7 @@ async function readCbeReceiptUrlFromImage(file: File) {
   return readReceiptUrlWithOcr(file);
 }
 
-async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
+async function postSubmissionToSpreadsheet(record: SubmissionRecord): Promise<string> {
   const webhookUrl = getSpreadsheetWebhookUrl();
 
   if (!webhookUrl) {
@@ -437,6 +437,7 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord) {
   }
 
   console.info("[receipt] Submission request sent and acknowledged by server.");
+  return typeof result?.status === "string" ? result.status : "Verified";
 }
 
 const features: Feature[] = [
@@ -620,6 +621,7 @@ const formTranslations = {
     receiptNameMismatch: "Could not verify the recipient name on this receipt.",
     receiptTransactionMissing: "Could not find the Transaction Number on this receipt.",
     success: "Thank you. Your receipt is verified and we will deliver the news.",
+    pendingSuccess: "Thank you. Your request was received and the receipt is pending manual verification.",
     spreadsheetMissing: "Live spreadsheet is not connected yet. Add the webhook URL in runtime-config.js.",
     spreadsheetError: "Invalid receipt or payment details. Please upload a valid, unused Telebirr receipt and try again.",
     recording: "Recording request...",
@@ -672,6 +674,7 @@ const formTranslations = {
     receiptNameMismatch: "የተቀባዩን ስም በዚህ ደረሰኝ ላይ ማረጋገጥ አልቻልን።",
     receiptTransactionMissing: "የትርጉም ቁጥር በዚህ ደረሰኝ ላይ ማግኘት አልቻልን።",
     success: "እናመሰግናለን። ደረሰኝዎ ተረጋግጧል፣ መልእክቱንም እናደርሳለን።",
+    pendingSuccess: "እናመሰግናለን። ጥያቄዎ ደርሷል፤ ደረሰኙ በእጅ ማረጋገጫ ላይ ነው።",
     spreadsheetMissing: "የቀጥታ ሰንጠረዥ ገና አልተገናኘም። webhook URL በ runtime-config.js ውስጥ ያክሉ።",
     spreadsheetError: "ጥያቄውን በቀጥታ መመዝገብ አልቻልንም። እባክዎ ደግመው ይሞክሩ።",
     recording: "ጥያቄው እየተመዘገበ ነው...",
@@ -941,6 +944,7 @@ export default function App() {
   const [cbeReceiptUrl, setCbeReceiptUrl] = useState("");
   const [isReceiptChecking, setIsReceiptChecking] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submissionPending, setSubmissionPending] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [language, setLanguage] = useState<"en" | "am">("am");
@@ -1057,9 +1061,10 @@ export default function App() {
 
     try {
       setIsRecording(true);
-      await postSubmissionToSpreadsheet(nextRecord);
+      const submissionStatus = await postSubmissionToSpreadsheet(nextRecord);
 
       setSubmitted(true);
+      setSubmissionPending(submissionStatus === "Pending manual verification");
       formElement.reset();
       setReceiptName("");
       setCbeReceiptUrl("");
@@ -1071,6 +1076,7 @@ export default function App() {
         cbeReceiptUrl: nextRecord.cbeReceiptUrl,
       });
       setSubmitted(false);
+      setSubmissionPending(false);
       setSubmissionError(errorMessage);
     } finally {
       setIsRecording(false);
@@ -1523,7 +1529,7 @@ export default function App() {
               <button className="submit-button" type="submit" disabled={isReceiptChecking || isRecording}>
                 <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}
               </button>
-              {submitted && <output className="form-success">{formText.success}</output>}
+              {submitted && <output className="form-success">{submissionPending ? formText.pendingSuccess : formText.success}</output>}
               {submissionError && <output className="form-error">{submissionError}</output>}
             </form>
           </aside>

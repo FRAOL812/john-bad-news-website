@@ -31,14 +31,14 @@ function receiptHtml({
     </body></html>`;
 }
 
-function loadWebhook({ html = receiptHtml(), statusCode = 200, failHostnameFetch = false } = {}) {
+function loadWebhook({ html = receiptHtml(), statusCode = 200, failHostnameFetch = false, failAllFetches = false } = {}) {
   const fetchCalls = [];
   const context = {
     console,
     UrlFetchApp: {
       fetch(url, options) {
         fetchCalls.push({ url, options });
-        if (failHostnameFetch && url.startsWith("https://transactioninfo.ethiotelecom.et/")) {
+        if (failAllFetches || (failHostnameFetch && url.startsWith("https://transactioninfo.ethiotelecom.et/"))) {
           throw new Error(`Address unavailable: ${url}`);
         }
         return {
@@ -66,7 +66,7 @@ function submission({ tier = "basic", special = 0, reference = "DGP17W7401" } = 
 }
 
 function verify(options = {}) {
-  const runtime = loadWebhook({ html: options.html, statusCode: options.statusCode, failHostnameFetch: options.failHostnameFetch });
+  const runtime = loadWebhook({ html: options.html, statusCode: options.statusCode, failHostnameFetch: options.failHostnameFetch, failAllFetches: options.failAllFetches });
   const result = runtime.verify(options.data || submission(), new Date("2026-08-16T12:00:00Z"));
   return { result, fetchCalls: runtime.fetchCalls };
 }
@@ -137,4 +137,13 @@ test("falls back to the Ethiotelecom IP when Apps Script cannot resolve the rece
   assert.equal(fetchCalls.length, 4);
   assert.equal(fetchCalls[3].url, "https://196.188.116.120/receipt/DGP17W7401");
   assert.equal(fetchCalls[3].options.headers.Host, "transactioninfo.ethiotelecom.et");
+});
+
+test("marks the receipt pending when Apps Script cannot reach either official receipt route", () => {
+  const { result, fetchCalls } = verify({ failAllFetches: true });
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, true);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.reference, "DGP17W7401");
+  assert.equal(fetchCalls.length, 4);
 });
