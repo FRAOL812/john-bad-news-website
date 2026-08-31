@@ -1,13 +1,14 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-08-31-receipt-error-fix";
+const WEBHOOK_VERSION = "2026-09-01-telebirr-dns-fallback";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
 const PAYPAL_URGENT_PRICE_USD = 50;
 const TELEBIRR_NAME = "Fraol Eshetu Hailu";
 const TELEBIRR_NUMBER = "0913885322";
+const TELEBIRR_RECEIPT_IP = "196.188.116.120";
 const PAYPAL_NAME = "Yonatan Woldegiorgis";
 const PAYPAL_USERNAME = "@YonatanWoldegiorgis9";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
@@ -117,7 +118,23 @@ function fetchTelebirrReceipt(receiptLink) {
     }
     if (attempt < 3 && typeof Utilities !== "undefined") Utilities.sleep(attempt * 500);
   }
-  if (!response) throw lastError || new Error("receipt service was unavailable");
+  if (!response) {
+    try {
+      const receiptPath = receiptLink.replace(/^https:\/\/transactioninfo\.ethiotelecom\.et/i, "");
+      response = UrlFetchApp.fetch(`https://${TELEBIRR_RECEIPT_IP}${receiptPath}`, {
+        followRedirects: true,
+        muteHttpExceptions: true,
+        validateHttpsCertificates: false,
+        headers: {
+          Host: "transactioninfo.ethiotelecom.et",
+          Accept: "text/html,application/xhtml+xml",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+    } catch (fallbackError) {
+      throw lastError || fallbackError || new Error("receipt service was unavailable");
+    }
+  }
   const statusCode = response.getResponseCode();
   const html = response.getContentText();
   if (statusCode !== 200) throw new Error(`receipt service returned HTTP ${statusCode}`);

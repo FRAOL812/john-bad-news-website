@@ -31,13 +31,16 @@ function receiptHtml({
     </body></html>`;
 }
 
-function loadWebhook({ html = receiptHtml(), statusCode = 200 } = {}) {
+function loadWebhook({ html = receiptHtml(), statusCode = 200, failHostnameFetch = false } = {}) {
   const fetchCalls = [];
   const context = {
     console,
     UrlFetchApp: {
       fetch(url, options) {
         fetchCalls.push({ url, options });
+        if (failHostnameFetch && url.startsWith("https://transactioninfo.ethiotelecom.et/")) {
+          throw new Error(`Address unavailable: ${url}`);
+        }
         return {
           getResponseCode: () => statusCode,
           getContentText: () => html,
@@ -63,7 +66,7 @@ function submission({ tier = "basic", special = 0, reference = "DGP17W7401" } = 
 }
 
 function verify(options = {}) {
-  const runtime = loadWebhook({ html: options.html, statusCode: options.statusCode });
+  const runtime = loadWebhook({ html: options.html, statusCode: options.statusCode, failHostnameFetch: options.failHostnameFetch });
   const result = runtime.verify(options.data || submission(), new Date("2026-08-16T12:00:00Z"));
   return { result, fetchCalls: runtime.fetchCalls };
 }
@@ -126,4 +129,12 @@ test("rejects invalid and unavailable official receipt pages", () => {
   const unavailablePage = verify({ statusCode: 503 }).result;
   assert.equal(unavailablePage.ok, false);
   assert.match(unavailablePage.errors.join(" "), /HTTP 503/);
+});
+
+test("falls back to the Ethiotelecom IP when Apps Script cannot resolve the receipt hostname", () => {
+  const { result, fetchCalls } = verify({ failHostnameFetch: true });
+  assert.equal(result.ok, true);
+  assert.equal(fetchCalls.length, 4);
+  assert.equal(fetchCalls[3].url, "https://196.188.116.120/receipt/DGP17W7401");
+  assert.equal(fetchCalls[3].options.headers.Host, "transactioninfo.ethiotelecom.et");
 });
