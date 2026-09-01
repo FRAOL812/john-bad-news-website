@@ -49,8 +49,8 @@ function loadWebhook({ html = receiptHtml(), statusCode = 200, failHostnameFetch
     },
   };
   vm.createContext(context);
-  vm.runInContext(`${webhookSource}\n;globalThis.__testApi = { verifyTelebirrReceipt, queueTelebirrForManualVerification };`, context);
-  return { verify: context.__testApi.verifyTelebirrReceipt, queuePending: context.__testApi.queueTelebirrForManualVerification, fetchCalls };
+  vm.runInContext(`${webhookSource}\n;globalThis.__testApi = { verifyTelebirrReceipt, verifyPaypalReceipt, queueTelebirrForManualVerification };`, context);
+  return { verify: context.__testApi.verifyTelebirrReceipt, verifyPaypal: context.__testApi.verifyPaypalReceipt, queuePending: context.__testApi.queueTelebirrForManualVerification, fetchCalls };
 }
 
 function submission({ tier = "basic", special = 0, reference = "DGP17W7401" } = {}) {
@@ -81,6 +81,24 @@ test("basic plan verifies the settled 50 ETB, not the fee-inclusive total", () =
   assert.equal(fetchCalls.length, 1);
   assert.equal(fetchCalls[0].url, "https://transactioninfo.ethiotelecom.et/receipt/DGP17W7401");
 });
+
+for (const paypalPlan of [
+  { name: "basic", tier: "basic", amount: 5 },
+  { name: "urgent", tier: "urgent", amount: 25 },
+]) {
+  test(`PayPal ${paypalPlan.name} confirmation requires ${paypalPlan.amount} USD`, () => {
+    const runtime = loadWebhook();
+    const result = runtime.verifyPaypal({
+      paymentMethod: "paypal",
+      serviceTier: paypalPlan.tier,
+      receiptOcrText: `PayPal Payment to Yonatan Woldegiorgis USD ${paypalPlan.amount}.00 Transaction ID: PAYPAL12345`,
+      paypalReceiptVerified: true,
+      receiptFile: "paypal-receipt.png",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.amount, paypalPlan.amount);
+  });
+}
 
 for (const paymentPlan of [
   { name: "basic", tier: "basic", special: 0, amount: 50 },
