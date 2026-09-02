@@ -68,6 +68,56 @@ type RuntimeConfig = {
   PAYPAL_USERNAME?: string;
 };
 
+type SubmissionErrorCode = "configuration" | "network" | "timeout" | "busy" | "server" | "duplicate" | "invalid" | "unexpected";
+
+class SubmissionError extends Error {
+  constructor(public code: SubmissionErrorCode, message: string, public status?: number) {
+    super(message);
+    this.name = "SubmissionError";
+  }
+}
+
+function getSubmissionErrorMessage(error: unknown, language: "en" | "am", fallback: string): string {
+  if (!(error instanceof SubmissionError)) return fallback;
+
+  const messages: Record<SubmissionErrorCode, { en: string; am: string }> = {
+    configuration: {
+      en: "Submissions are temporarily unavailable because our service connection needs attention. Your receipt is not the problem. Please try again later.",
+      am: "የአገልግሎት ግንኙነታችን ጊዜያዊ ችግር ስላለበት ጥያቄዎን አሁን መቀበል አልቻልንም። ችግሩ የደረሰኝዎ አይደለም፤ እባክዎ ቆይተው ይሞክሩ።",
+    },
+    network: {
+      en: "We could not connect to the submission service. Check your internet connection and try again.",
+      am: "ከመላኪያ አገልግሎቱ ጋር መገናኘት አልቻልንም። ኢንተርኔትዎን ያረጋግጡና ደግመው ይሞክሩ።",
+    },
+    timeout: {
+      en: "Receipt verification is taking longer than expected. Your receipt has not been rejected. Please try again.",
+      am: "የደረሰኝ ማረጋገጫው ከተጠበቀው በላይ ጊዜ ወስዷል። ደረሰኝዎ ውድቅ አልተደረገም፤ ደግመው ይሞክሩ።",
+    },
+    busy: {
+      en: "The submission service is busy right now. Please wait a moment and try again.",
+      am: "የመላኪያ አገልግሎቱ አሁን ተጨናንቋል። ትንሽ ቆይተው ደግመው ይሞክሩ።",
+    },
+    server: {
+      en: "The submission service is temporarily unavailable. Your receipt has not been rejected. Please try again later.",
+      am: "የመላኪያ አገልግሎቱ ለጊዜው አይሰራም። ደረሰኝዎ ውድቅ አልተደረገም፤ ቆይተው ይሞክሩ።",
+    },
+    duplicate: {
+      en: "This receipt has already been used for another request. Please use a different payment receipt.",
+      am: "ይህ ደረሰኝ ለሌላ ጥያቄ አስቀድሞ ጥቅም ላይ ውሏል። እባክዎ ሌላ የክፍያ ደረሰኝ ይጠቀሙ።",
+    },
+    invalid: {
+      en: "We could not verify this receipt or its payment details. Make sure it is clear, matches the selected service, and has not been used before.",
+      am: "ደረሰኙን ወይም የክፍያ መረጃውን ማረጋገጥ አልቻልንም። ግልጽ፣ ለተመረጠው አገልግሎት የተከፈለ እና ከዚህ በፊት ያልተጠቀሙበት መሆኑን ያረጋግጡ።",
+    },
+    unexpected: {
+      en: "We received an unexpected response while checking the receipt. Please try again later.",
+      am: "ደረሰኙን ስንመረምር ያልተጠበቀ ምላሽ ደርሶናል። እባክዎ ቆይተው ደግመው ይሞክሩ።",
+    },
+  };
+
+  return messages[error.code][language];
+}
+
 declare global {
   interface Window {
     BarcodeDetector?: {
@@ -81,7 +131,7 @@ declare global {
 
 const basePriceBirr = 50;
 const urgentPriceBirr = 200;
-const abroadBasePriceUsd = 5;
+const abroadBasePriceUsd = 15;
 const abroadUrgentPriceUsd = 25;
 const paypalDisplayName = window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis";
 const paypalUsername = window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9";
@@ -405,7 +455,7 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord): Promise<st
 
   if (!webhookUrl) {
     console.error("[receipt] Spreadsheet webhook URL is missing");
-    throw new Error("Spreadsheet webhook URL is not configured.");
+    throw new SubmissionError("configuration", "Spreadsheet webhook URL is not configured.");
   }
 
   console.info("[receipt] Sending submission to spreadsheet webhook", {
@@ -416,24 +466,58 @@ async function postSubmissionToSpreadsheet(record: SubmissionRecord): Promise<st
     language: record.language,
   });
 
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify(record),
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30000);
+  let response: Response;
+  try {
+    const requestBody = JSON.stringify(record);
+    response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: requestBody,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    // Apps Script sometimes redirects to an expired temporary googleusercontent URL.
+    // Retry the permanent /exec endpoint once to obtain a fresh redirect token.
+    if (response.status === 404 && response.url.includes("script.googleusercontent.com")) {
+      console.warn("[receipt] Temporary Apps Script redirect expired; retrying the permanent webhook URL");
+      const retryUrl = `${webhookUrl}${webhookUrl.includes("?") ? "&" : "?"}_retry=${Date.now()}`;
+      response = await fetch(retryUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: requestBody,
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new SubmissionError("timeout", "The submission request timed out.");
+    }
+    throw new SubmissionError("network", "The submission server could not be reached.");
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
-    throw new Error(`Server responded with ${response.status}`);
+    const code: SubmissionErrorCode = response.status === 404 ? "configuration" : response.status === 429 ? "busy" : "server";
+    throw new SubmissionError(code, `Submission server returned HTTP ${response.status}.`, response.status);
   }
 
   const responseText = await response.text();
-  const result = responseText ? JSON.parse(responseText) : { ok: true };
+  let result: { ok?: boolean; errors?: unknown; status?: string } = { ok: true };
+  try {
+    result = responseText ? JSON.parse(responseText) : result;
+  } catch {
+    throw new SubmissionError("unexpected", "The submission server returned an unreadable response.");
+  }
 
   if (result && result.ok === false) {
     const errors = Array.isArray(result.errors) ? result.errors.join(" ") : "";
-    throw new Error(errors || "Invalid receipt.");
+    const code: SubmissionErrorCode = /already\s+(?:been\s+)?used|duplicate/i.test(errors) ? "duplicate" : "invalid";
+    throw new SubmissionError(code, errors || "Invalid receipt.");
   }
 
   console.info("[receipt] Submission request sent and acknowledged by server.");
@@ -1069,7 +1153,7 @@ export default function App() {
       setReceiptName("");
       setCbeReceiptUrl("");
     } catch (error) {
-      const errorMessage = error instanceof Error && error.message.trim() ? error.message : formText.spreadsheetError;
+      const errorMessage = getSubmissionErrorMessage(error, language, formText.spreadsheetError);
       console.error("[receipt] Submission failed", {
         error,
         receiptFile: nextRecord.receiptFile,

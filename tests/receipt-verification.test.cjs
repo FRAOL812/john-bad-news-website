@@ -83,7 +83,7 @@ test("basic plan verifies the settled 50 ETB, not the fee-inclusive total", () =
 });
 
 for (const paypalPlan of [
-  { name: "basic", tier: "basic", amount: 5 },
+  { name: "basic", tier: "basic", amount: 15 },
   { name: "urgent", tier: "urgent", amount: 25 },
 ]) {
   test(`PayPal ${paypalPlan.name} confirmation requires ${paypalPlan.amount} USD`, () => {
