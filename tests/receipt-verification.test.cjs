@@ -100,6 +100,33 @@ for (const paypalPlan of [
   });
 }
 
+test("PayPal mobile details screenshot verifies without a printed PayPal heading", () => {
+  const runtime = loadWebhook();
+  const result = runtime.verifyPaypal({
+    paymentMethod: "paypal",
+    serviceTier: "basic",
+    receiptOcrText: "Total $15.00 Shipping info Yonatan Woldegiorgis 4813 N Borthwick Ave Portland, OR 97217 United States Transaction ID 0NW80256AE058180W Need help? Get answers Send again",
+    paypalReceiptVerified: true,
+    receiptFile: "paypal-mobile-details.png",
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.amount, 15);
+  assert.equal(result.reference, "0NW80256AE058180W");
+});
+
+test("PayPal-like mobile details still rejects the wrong recipient", () => {
+  const runtime = loadWebhook();
+  const result = runtime.verifyPaypal({
+    paymentMethod: "paypal",
+    serviceTier: "basic",
+    receiptOcrText: "Total $15.00 Shipping info Somebody Else Transaction ID 0NW80256AE058180W",
+    paypalReceiptVerified: true,
+    receiptFile: "wrong-recipient.png",
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /PayPal recipient must be/);
+});
+
 for (const paymentPlan of [
   { name: "basic", tier: "basic", special: 0, amount: 50 },
   { name: "urgent", tier: "urgent", special: 0, amount: 200 },

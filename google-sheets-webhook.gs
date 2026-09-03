@@ -1,7 +1,7 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-09-01-pending-payment-parties";
+const WEBHOOK_VERSION = "2026-09-03-paypal-mobile-details";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
@@ -232,10 +232,14 @@ function verifyPaypalReceipt(data) {
   const expected = getExpectedAmount(data);
   const amount = extractUsdAmount(text);
   const reference = extractReference(text);
+  const hasRecipient = compact.indexOf(normalizeComparable(PAYPAL_NAME)) !== -1 || compact.indexOf(normalizeComparable(PAYPAL_USERNAME)) !== -1;
+  // PayPal's mobile transaction-details sheet does not always render the word
+  // "PayPal". It identifies itself with Total + Shipping info + Transaction ID.
+  const hasMobileDetailsLayout = /\btotal\b/i.test(text) && /\bshipping\s*info\b/i.test(text) && /\btransaction\s*(?:id|number|no\.?|reference|ref\.?)\b/i.test(text);
   const errors = [];
   if (!data.paypalReceiptVerified || !data.receiptFile || !text) errors.push("PayPal receipt screenshot was not scanned");
-  if (compact.indexOf("paypal") === -1) errors.push("The screenshot is not a PayPal receipt");
-  if (compact.indexOf(normalizeComparable(PAYPAL_NAME)) === -1 && compact.indexOf(normalizeComparable(PAYPAL_USERNAME)) === -1) {
+  if (compact.indexOf("paypal") === -1 && !hasMobileDetailsLayout) errors.push("The screenshot is not a PayPal receipt");
+  if (!hasRecipient) {
     errors.push(`PayPal recipient must be ${PAYPAL_NAME} or ${PAYPAL_USERNAME}`);
   }
   appendAmountErrors(errors, amount, expected, "USD");
@@ -264,7 +268,7 @@ function extractEtbAmount(text) {
 }
 
 function extractUsdAmount(text) {
-  return extractMoney(text, [/(?:\bUSD\b|\$)\s*([0-9,]+(?:\.\d{1,2})?)/i, /([0-9,]+(?:\.\d{1,2})?)\s*\bUSD\b/i]);
+  return extractMoney(text, [/\bTotal\b\s*(?:USD\s*)?\$?\s*([0-9,]+(?:\.\d{1,2})?)/i, /(?:\bUSD\b|\$)\s*([0-9,]+(?:\.\d{1,2})?)/i, /([0-9,]+(?:\.\d{1,2})?)\s*\bUSD\b/i]);
 }
 
 function extractMoney(text, patterns) {
