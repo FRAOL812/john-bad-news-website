@@ -1031,6 +1031,7 @@ export default function App() {
   const [submissionPending, setSubmissionPending] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [language, setLanguage] = useState<"en" | "am">("am");
   const [selectedCountryCode, setSelectedCountryCode] = useState("+251");
   const [receiverCountryCode, setReceiverCountryCode] = useState("+251");
@@ -1149,6 +1150,7 @@ export default function App() {
 
       setSubmitted(true);
       setSubmissionPending(submissionStatus === "Pending manual verification");
+      setShowSuccessModal(true);
       formElement.reset();
       setReceiptName("");
       setCbeReceiptUrl("");
@@ -1613,7 +1615,6 @@ export default function App() {
               <button className="submit-button" type="submit" disabled={isReceiptChecking || isRecording}>
                 <Icon name="send" /> {isRecording ? formText.recording : isReceiptChecking ? formText.receiptChecking : text.submit}
               </button>
-              {submitted && <output className="form-success">{submissionPending ? formText.pendingSuccess : formText.success}</output>}
               {submissionError && <output className="form-error">{submissionError}</output>}
             </form>
           </aside>
@@ -1685,6 +1686,33 @@ export default function App() {
           <span className="tagline">{text.tagline}</span>
         </div>
       </footer>
+
+      {showSuccessModal && (
+        <div className="success-modal-overlay" onClick={() => setShowSuccessModal(false)}>
+          <div className="success-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="success-modal-close"
+              onClick={() => setShowSuccessModal(false)}
+              aria-label="Close"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <div className="success-modal-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <h3>Thank You</h3>
+            <p>{submissionPending ? formText.pendingSuccess : formText.success}</p>
+            <button className="success-modal-button" onClick={() => setShowSuccessModal(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
