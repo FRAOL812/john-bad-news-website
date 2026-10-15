@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect, useMemo } from "react";
+import Admin from "./components/pages/Admin";
 
 type IconName =
   | "shield"
@@ -133,10 +134,6 @@ const basePriceBirr = 50;
 const urgentPriceBirr = 200;
 const abroadBasePriceUsd = 15;
 const abroadUrgentPriceUsd = 25;
-const paypalDisplayName = window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis";
-const paypalUsername = window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9";
-const telebirrNumber = window.__RUNTIME_CONFIG__?.TELEBIRR_NUMBER ?? "0913885322";
-const telebirrAccountName = window.__RUNTIME_CONFIG__?.TELEBIRR_ACCOUNT_NAME ?? "Fraol Eshetu Hailu";
 const youtubeChannelUrl = "https://www.youtube.com/";
 const maxReceiptSize = 5 * 1024 * 1024;
 const cbeReceiptBaseUrl = "https://mbreciept.cbe.com.et/";
@@ -422,8 +419,8 @@ function normalizeTelebirrReceiptLink(value: FormDataEntryValue | null) {
 function hasPaypalIdentity(value: string) {
   const normalized = normalizeComparableText(value);
   return (
-    normalized.includes(normalizeComparableText(paypalDisplayName)) ||
-    normalized.includes(normalizeComparableText(paypalUsername))
+    normalized.includes(normalizeComparableText(config.PAYPAL_DISPLAY_NAME)) ||
+    normalized.includes(normalizeComparableText(config.PAYPAL_USERNAME))
   );
 }
 
@@ -672,9 +669,9 @@ const formTranslations = {
     receiverPlaceholder: "Enter receiver's name or phone number",
     serviceTier: "Service",
     paymentDetails: "Payment details",
-    accountNo: `Telebirr: ${telebirrNumber}`,
-    accountName: telebirrAccountName,
-    paypalAccount: `PayPal: ${paypalDisplayName} (${paypalUsername})`,
+    accountNo: `Telebirr: ${config.TELEBIRR_NUMBER}`,
+    accountName: config.TELEBIRR_ACCOUNT_NAME,
+    paypalAccount: `PayPal: ${config.PAYPAL_DISPLAY_NAME} (${config.PAYPAL_USERNAME})`,
     basePrice: "Selected price",
     urgentPrice: "Urgent: 200 Birr / 25 USD",
     abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
@@ -688,7 +685,7 @@ const formTranslations = {
     paymentTooLow: "The amount is below the selected service price.",
     paymentStatusPending: "Pending receipt confirmation",
     receiptUpload: "Click to upload receipt",
-    receiptHelp: "Ethiopia: upload a Telebirr payment screenshot. Abroad: upload a PayPal screenshot showing Yonatan Woldegiorgis or @YonatanWoldegiorgis9.",
+    receiptHelp: "Ethiopia: upload a Telebirr payment screenshot. Abroad: upload a PayPal screenshot showing {displayName} or {username}.",
     receiptLink: "Telebirr receipt link",
     receiptLinkPlaceholder: "https://transactioninfo.ethiotelecom.et/receipt/DGB6Q7N5DM",
     receiptLinkInvalid: "Enter a valid Telebirr receipt link from transactioninfo.ethiotelecom.et.",
@@ -725,9 +722,9 @@ const formTranslations = {
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     serviceTier: "አገልግሎት",
     paymentDetails: "የክፍያ መረጃ",
-    accountNo: `ቴሌብር: ${telebirrNumber}`,
-    accountName: telebirrAccountName,
-    paypalAccount: `PayPal: ${paypalDisplayName} (${paypalUsername})`,
+    accountNo: `ቴሌብር: ${config.TELEBIRR_NUMBER}`,
+    accountName: config.TELEBIRR_ACCOUNT_NAME,
+    paypalAccount: `PayPal: ${config.PAYPAL_DISPLAY_NAME} (${config.PAYPAL_USERNAME})`,
     basePrice: "የተመረጠው ዋጋ",
     urgentPrice: "አስቸኳይ፡ 200 ብር / 25 USD",
     abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
@@ -741,7 +738,7 @@ const formTranslations = {
     paymentTooLow: "የተከፈለው መጠን ከመረጡት አገልግሎት ዋጋ በታች ነው።",
     paymentStatusPending: "ደረሰኝ ማረጋገጫ በመጠባበቅ ላይ",
     receiptUpload: "ደረሰኝ ለመስቀል ይጫኑ",
-    receiptHelp: "ኢትዮጵያ፡ የቴሌብር ስክሪንሾት። ከውጭ፡ Yonatan Woldegiorgis ወይም @YonatanWoldegiorgis9 የሚታይበት PayPal ስክሪንሾት።",
+    receiptHelp: "ኢትዮጵያ፡ የቴሌብር ስክሪንሾት። ከውጭ፡ {displayName} ወይም {username} የሚታይበት PayPal ስክሪንሾት።",
     receiptLink: "የቴሌብር ደረሰኝ ሊንክ",
     receiptLinkPlaceholder: "https://transactioninfo.ethiotelecom.et/receipt/DGB6Q7N5DM",
     receiptLinkInvalid: "ከ transactioninfo.ethiotelecom.et የተገኘ ትክክለኛ የቴሌብር ደረሰኝ ሊንክ ያስገቡ።",
@@ -1032,8 +1029,47 @@ export default function App() {
   const [submissionError, setSubmissionError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [config, setConfig] = useState({
+    TELEBIRR_NUMBER: window.__RUNTIME_CONFIG__?.TELEBIRR_NUMBER ?? "0913885322",
+    TELEBIRR_ACCOUNT_NAME: window.__RUNTIME_CONFIG__?.TELEBIRR_ACCOUNT_NAME ?? "Fraol Eshetu Hailu",
+    PAYPAL_DISPLAY_NAME: window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis",
+    PAYPAL_USERNAME: window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9",
+  });
   const [language, setLanguage] = useState<"en" | "am">("am");
   const [selectedCountryCode, setSelectedCountryCode] = useState("+251");
+
+  const formText = useMemo(() => {
+    const base = formTranslations[language];
+    return {
+      ...base,
+      accountNo: language === "en" ? `Telebirr: ${config.TELEBIRR_NUMBER}` : `ቴሌብር: ${config.TELEBIRR_NUMBER}`,
+      accountName: config.TELEBIRR_ACCOUNT_NAME,
+      paypalAccount: `PayPal: ${config.PAYPAL_DISPLAY_NAME} (${config.PAYPAL_USERNAME})`,
+      receiptHelp: language === "en"
+        ? `Ethiopia: upload a Telebirr payment screenshot. Abroad: upload a PayPal screenshot showing ${config.PAYPAL_DISPLAY_NAME} or ${config.PAYPAL_USERNAME}.`
+        : `ኢትዮጵያ፡ የቴሌብር ስክሪንሾት። ከውጭ፡ ${config.PAYPAL_DISPLAY_NAME} ወይም ${config.PAYPAL_USERNAME} የሚታይበት PayPal ስክሪንሾት።`,
+    };
+  }, [config, language]);
+
+  useEffect(() => {
+    const webhookUrl = window.__RUNTIME_CONFIG__?.SPREADSHEET_WEBHOOK_URL;
+    if (webhookUrl) {
+      fetch(`${webhookUrl}?path=config`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.ok) {
+            setConfig({
+              TELEBIRR_NUMBER: data.TELEBIRR_NUMBER || config.TELEBIRR_NUMBER,
+              TELEBIRR_ACCOUNT_NAME: data.TELEBIRR_ACCOUNT_NAME || config.TELEBIRR_ACCOUNT_NAME,
+              PAYPAL_DISPLAY_NAME: data.PAYPAL_DISPLAY_NAME || config.PAYPAL_DISPLAY_NAME,
+              PAYPAL_USERNAME: data.PAYPAL_USERNAME || config.PAYPAL_USERNAME,
+            });
+          }
+        })
+        .catch((err) => console.error("Failed to fetch config:", err));
+    }
+  }, []);
   const [receiverCountryCode, setReceiverCountryCode] = useState("+251");
   const [paymentOptionId, setPaymentOptionId] = useState<PaymentOptionId>("local-basic");
   const text = pageTranslations[language];
@@ -1284,7 +1320,7 @@ export default function App() {
           return;
         }
 
-        setCbeReceiptUrl(`paypal:${paypalUsername}`);
+        setCbeReceiptUrl(`paypal:${config.PAYPAL_USERNAME}`);
         setReceiptOcrText(receiptText);
         setReceiptError("");
         return;
@@ -1384,12 +1420,22 @@ export default function App() {
               <option value="am">አማርኛ</option>
             </select>
           </label>
-          <a className="header-cta" href="#contact">
-            {text.cta}
-          </a>
+          <button
+            className="header-cta"
+            onClick={() => setShowAdmin(!showAdmin)}
+            style={{ minWidth: "auto", padding: "13px 16px" }}
+          >
+            {showAdmin ? "Back" : "Admin"}
+          </button>
+          {!showAdmin && (
+            <a className="header-cta" href="#contact">
+              {text.cta}
+            </a>
+          )}
         </div>
       </header>
 
+      {showAdmin ? <Admin /> : (
       <main id="home" className="page-shell">
         <section className="hero-section" aria-labelledby="hero-title">
           <div className="hero-copy">
@@ -1550,8 +1596,8 @@ export default function App() {
                   <b>{selectedPrice} {selectedCurrency}</b>
                   {isAbroadPayment ? (
                     <>
-                      <span>{paypalDisplayName}</span>
-                      <span>PayPal address: {paypalUsername}</span>
+                      <span>{config.PAYPAL_DISPLAY_NAME}</span>
+                      <span>PayPal address: {config.PAYPAL_USERNAME}</span>
                     </>
                   ) : (
                     <>
@@ -1686,6 +1732,7 @@ export default function App() {
           <span className="tagline">{text.tagline}</span>
         </div>
       </footer>
+      )}
 
       {showSuccessModal && (
         <div className="success-modal-overlay" onClick={() => setShowSuccessModal(false)}>

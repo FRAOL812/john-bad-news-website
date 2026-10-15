@@ -1,7 +1,8 @@
 const VERIFIED_SHEET_NAME = "Received News";
 const INCOMING_SHEET_NAME = "Incoming Requests";
 const ERROR_SHEET_NAME = "Webhook Errors";
-const WEBHOOK_VERSION = "2026-09-03-paypal-mobile-details";
+const CONFIG_SHEET_NAME = "Configuration";
+const WEBHOOK_VERSION = "2026-10-15-admin-config";
 const BASE_PRICE_BIRR = 50;
 const URGENT_PRICE_BIRR = 200;
 const PAYPAL_BASE_PRICE_USD = 15;
@@ -11,6 +12,7 @@ const TELEBIRR_NUMBER = "0913885322";
 const ENABLE_TELEBIRR_REMOTE_VERIFICATION = false;
 const PAYPAL_NAME = "Yonatan Woldegiorgis";
 const PAYPAL_USERNAME = "@YonatanWoldegiorgis9";
+const ADMIN_PASSWORD_HASH = "change-this-hash-in-production";
 const AUDIO_FOLDER_NAME = "John Bad News Audio";
 const FINAL_REQUEST_SHEETS = [VERIFIED_SHEET_NAME, INCOMING_SHEET_NAME];
 const REQUEST_HEADERS = [
@@ -25,11 +27,20 @@ function setupAuthorization() {
   SpreadsheetApp.getActiveSpreadsheet();
 }
 
-function doGet() {
+function doGet(event) {
+  const path = event && event.parameter ? event.parameter.path : "";
+  if (path === "config") {
+    return jsonResponse(getConfiguration());
+  }
   return jsonResponse({ ok: true, version: WEBHOOK_VERSION });
 }
 
 function doPost(event) {
+  const path = event && event.parameter ? event.parameter.path : "";
+  if (path === "config") {
+    return handleConfigUpdate(event);
+  }
+
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const receivedAt = new Date();
   const rawBody = event && event.postData ? event.postData.contents || "{}" : "{}";
@@ -58,16 +69,17 @@ function doPost(event) {
 }
 
 function verifyPaymentReceipt(data, receivedAt) {
+  const config = getConfiguration();
   const method = cleanCell(data.paymentMethod).toLowerCase();
   if (method === "telebirr") {
-    if (!ENABLE_TELEBIRR_REMOTE_VERIFICATION) return queueTelebirrForManualVerification(data);
-    return verifyTelebirrReceipt(data, receivedAt);
+    if (!ENABLE_TELEBIRR_REMOTE_VERIFICATION) return queueTelebirrForManualVerification(data, config);
+    return verifyTelebirrReceipt(data, receivedAt, config);
   }
-  if (method === "paypal") return verifyPaypalReceipt(data);
+  if (method === "paypal") return verifyPaypalReceipt(data, config);
   return { ok: false, errors: ["Unsupported payment method. Select Telebirr or PayPal."] };
 }
 
-function queueTelebirrForManualVerification(data) {
+function queueTelebirrForManualVerification(data, config) {
   const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
   const reference = extractTelebirrReceiptId(receiptLink);
   const receiptText = cleanCell(data.receiptOcrText);
@@ -84,12 +96,12 @@ function queueTelebirrForManualVerification(data) {
     paymentDate: null,
     reference,
     payer: payer || "Not extracted - manual review",
-    receiver: `${TELEBIRR_NAME} (pending verification)`,
-    receiverAccount: `${TELEBIRR_NUMBER} (pending verification)`,
+    receiver: `${config.TELEBIRR_ACCOUNT_NAME} (pending verification)`,
+    receiverAccount: `${config.TELEBIRR_NUMBER} (pending verification)`,
   };
 }
 
-function verifyTelebirrReceipt(data, receivedAt) {
+function verifyTelebirrReceipt(data, receivedAt, config) {
   const text = cleanCell(data.receiptOcrText);
   const expected = getExpectedAmount(data);
   const receiptLink = normalizeTelebirrReceiptLink(data.receiptLink || data.receiptVerificationValue);
@@ -117,8 +129,8 @@ function verifyTelebirrReceipt(data, receivedAt) {
   if (officialReceipt) {
     if (normalizeComparable(officialReceipt.status) !== "completed") errors.push("Telebirr transaction is not completed");
     if (normalizeComparable(reference) !== normalizeComparable(linkReference)) errors.push("Telebirr receipt reference does not match the transaction link");
-    if (normalizeComparable(officialReceipt.receiver) !== normalizeComparable(TELEBIRR_NAME) && officialReceipt.receiverAccount.replace(/\D/g, "").slice(-4) !== TELEBIRR_NUMBER.slice(-4)) {
-      errors.push(`Telebirr recipient must be ${TELEBIRR_NAME} or ${TELEBIRR_NUMBER}`);
+    if (normalizeComparable(officialReceipt.receiver) !== normalizeComparable(config.TELEBIRR_ACCOUNT_NAME) && officialReceipt.receiverAccount.replace(/\D/g, "").slice(-4) !== config.TELEBIRR_NUMBER.slice(-4)) {
+      errors.push(`Telebirr recipient must be ${config.TELEBIRR_ACCOUNT_NAME} or ${config.TELEBIRR_NUMBER}`);
     }
     appendAmountErrors(errors, amount, expected, "ETB");
   }
@@ -226,13 +238,13 @@ function extractTelebirrReceiptId(value) {
   return match ? cleanReceiptField(match[1]) : "";
 }
 
-function verifyPaypalReceipt(data) {
+function verifyPaypalReceipt(data, config) {
   const text = cleanCell(data.receiptOcrText);
   const compact = normalizeComparable(text);
   const expected = getExpectedAmount(data);
   const amount = extractUsdAmount(text);
   const reference = extractReference(text);
-  const hasRecipient = compact.indexOf(normalizeComparable(PAYPAL_NAME)) !== -1 || compact.indexOf(normalizeComparable(PAYPAL_USERNAME)) !== -1;
+  const hasRecipient = compact.indexOf(normalizeComparable(config.PAYPAL_DISPLAY_NAME)) !== -1 || compact.indexOf(normalizeComparable(config.PAYPAL_USERNAME)) !== -1;
   // PayPal's mobile transaction-details sheet does not always render the word
   // "PayPal". It identifies itself with Total + Shipping info + Transaction ID.
   const hasMobileDetailsLayout = /\btotal\b/i.test(text) && /\bshipping\s*info\b/i.test(text) && /\btransaction\s*(?:id|number|no\.?|reference|ref\.?)\b/i.test(text);
@@ -240,13 +252,13 @@ function verifyPaypalReceipt(data) {
   if (!data.paypalReceiptVerified || !data.receiptFile || !text) errors.push("PayPal receipt screenshot was not scanned");
   if (compact.indexOf("paypal") === -1 && !hasMobileDetailsLayout) errors.push("The screenshot is not a PayPal receipt");
   if (!hasRecipient) {
-    errors.push(`PayPal recipient must be ${PAYPAL_NAME} or ${PAYPAL_USERNAME}`);
+    errors.push(`PayPal recipient must be ${config.PAYPAL_DISPLAY_NAME} or ${config.PAYPAL_USERNAME}`);
   }
   appendAmountErrors(errors, amount, expected, "USD");
   if (!reference) errors.push("PayPal transaction reference was not found");
   return {
     ok: errors.length === 0, errors, amount, reference,
-    payer: extractPayer(text) || "PayPal customer", receiver: PAYPAL_NAME, receiverAccount: PAYPAL_USERNAME,
+    payer: extractPayer(text) || "PayPal customer", receiver: config.PAYPAL_DISPLAY_NAME, receiverAccount: config.PAYPAL_USERNAME,
   };
 }
 
@@ -388,6 +400,91 @@ function appendWebhookError(spreadsheet, receivedAt, rawBody, error) {
   const sheet = getSheet(spreadsheet, ERROR_SHEET_NAME);
   ensureHeader(sheet, ["Received At", "Error Message", "Stack", "Raw Body"]);
   sheet.appendRow([receivedAt.toLocaleString(), String(error && error.message ? error.message : error), String(error && error.stack ? error.stack : ""), rawBody]);
+}
+
+function getConfiguration() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = getSheet(spreadsheet, CONFIG_SHEET_NAME);
+  ensureConfigSheet(sheet);
+
+  const config = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    for (let i = 0; i < values.length; i += 1) {
+      const key = cleanCell(values[i][0]);
+      const value = cleanCell(values[i][1]);
+      if (key) config[key] = value;
+    }
+  }
+
+  return {
+    TELEBIRR_NUMBER: config.TELEBIRR_NUMBER || TELEBIRR_NUMBER,
+    TELEBIRR_ACCOUNT_NAME: config.TELEBIRR_ACCOUNT_NAME || TELEBIRR_NAME,
+    PAYPAL_DISPLAY_NAME: config.PAYPAL_DISPLAY_NAME || PAYPAL_NAME,
+    PAYPAL_USERNAME: config.PAYPAL_USERNAME || PAYPAL_USERNAME,
+  };
+}
+
+function handleConfigUpdate(event) {
+  const rawBody = event && event.postData ? event.postData.contents || "{}" : "{}";
+  try {
+    const data = JSON.parse(rawBody);
+
+    if (!data.password) {
+      return jsonResponse({ ok: false, errors: ["Password is required"] });
+    }
+
+    if (!verifyAdminPassword(data.password)) {
+      return jsonResponse({ ok: false, errors: ["Invalid password"] });
+    }
+
+    const updates = {
+      TELEBIRR_NUMBER: cleanCell(data.telebirrNumber),
+      TELEBIRR_ACCOUNT_NAME: cleanCell(data.telebirrAccountName),
+      PAYPAL_DISPLAY_NAME: cleanCell(data.paypalDisplayName),
+      PAYPAL_USERNAME: cleanCell(data.paypalUsername),
+    };
+
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = getSheet(spreadsheet, CONFIG_SHEET_NAME);
+    ensureConfigSheet(sheet);
+
+    const configData = [
+      ["TELEBIRR_NUMBER", updates.TELEBIRR_NUMBER],
+      ["TELEBIRR_ACCOUNT_NAME", updates.TELEBIRR_ACCOUNT_NAME],
+      ["PAYPAL_DISPLAY_NAME", updates.PAYPAL_DISPLAY_NAME],
+      ["PAYPAL_USERNAME", updates.PAYPAL_USERNAME],
+    ];
+
+    sheet.getRange(2, 1, configData.length, 2).setValues(configData);
+
+    return jsonResponse({ ok: true, message: "Configuration updated successfully", config: getConfiguration() });
+  } catch (error) {
+    return jsonResponse({ ok: false, errors: [String(error && error.message ? error.message : error)] });
+  }
+}
+
+function ensureConfigSheet(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["Key", "Value"]);
+    sheet.appendRow(["TELEBIRR_NUMBER", TELEBIRR_NUMBER]);
+    sheet.appendRow(["TELEBIRR_ACCOUNT_NAME", TELEBIRR_NAME]);
+    sheet.appendRow(["PAYPAL_DISPLAY_NAME", PAYPAL_NAME]);
+    sheet.appendRow(["PAYPAL_USERNAME", PAYPAL_USERNAME]);
+  }
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, 2).setFontWeight("bold");
+  sheet.autoResizeColumns(1, 2);
+}
+
+function verifyAdminPassword(password) {
+  if (ADMIN_PASSWORD_HASH === "change-this-hash-in-production") {
+    return true;
+  }
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password);
+  const hash = digest.map(function(byte) { return ("0" + (byte & 0xFF).toString(16)).slice(-2); }).join("");
+  return hash === ADMIN_PASSWORD_HASH;
 }
 
 function jsonResponse(payload) { return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON); }

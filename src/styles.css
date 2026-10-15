@@ -2668,6 +2668,41 @@ label span svg {
   }
 }
 
+.space-y-4 > * + * {
+  margin-top: 16px;
+}
+
+.section-divider {
+  padding: 12px 14px;
+  margin: 8px 0;
+  border: 1px solid rgba(226, 21, 36, 0.3);
+  border-radius: 7px;
+  background: rgba(226, 21, 36, 0.08);
+  color: #ff1f30;
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.notice-box.error {
+  border-color: rgba(255, 88, 88, 0.5);
+  background: rgba(134, 20, 28, 0.3);
+}
+
+.notice-box.error strong {
+  color: #ffd6da;
+}
+
+.notice-box.success {
+  border-color: rgba(61, 195, 111, 0.5);
+  background: rgba(28, 106, 57, 0.3);
+}
+
+.notice-box.success strong {
+  color: #d9ffe7;
+}
+
   .headline-block h1 {
     font-size: 2.78rem;
   }
