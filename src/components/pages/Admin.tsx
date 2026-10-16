@@ -22,7 +22,7 @@ export default function Admin() {
     try {
       const response = await fetch(`${webhookUrl}?path=config`);
       const data = await response.json();
-      if (data.ok) {
+      if (data.ok !== false && typeof data.TELEBIRR_NUMBER === "string" && typeof data.PAYPAL_USERNAME === "string") {
         setConfig({
           telebirrNumber: data.TELEBIRR_NUMBER || "",
           telebirrAccountName: data.TELEBIRR_ACCOUNT_NAME || "",
@@ -52,7 +52,7 @@ export default function Admin() {
     try {
       const response = await fetch(`${webhookUrl}?path=config`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           password,
           telebirrNumber: config.telebirrNumber,

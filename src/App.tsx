@@ -1066,7 +1066,7 @@ function HomePage() {
       fetch(`${webhookUrl}?path=config`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.ok) {
+          if (data.ok !== false && typeof data.TELEBIRR_NUMBER === "string" && typeof data.PAYPAL_USERNAME === "string") {
             setConfig({
               TELEBIRR_NUMBER: data.TELEBIRR_NUMBER || config.TELEBIRR_NUMBER,
               TELEBIRR_ACCOUNT_NAME: data.TELEBIRR_ACCOUNT_NAME || config.TELEBIRR_ACCOUNT_NAME,
