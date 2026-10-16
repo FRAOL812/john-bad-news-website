@@ -47,7 +47,6 @@ type SubmissionRecord = {
   contactChannel: string;
   paymentAmount: string;
   paymentCurrency: string;
-  specialRequestAmount: string;
   paymentStatus: string;
   cbeReceiptUrl: string;
   receiptVerificationValue: string;
@@ -683,8 +682,6 @@ const formTranslations = {
     urgentPrice: "Urgent: 200 Birr / 25 USD",
     abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
     liveNotice: "For YouTube Live content, applicants will be informed before anything is shown live.",
-    specialRequestAmount: "Special Request Payment",
-    specialRequestAmountPlaceholder: "Optional extra amount",
     youtubeNoticeTitle: "YouTube Channel Notice",
     youtubeNotice: "The conversation between the host and the respondent will be recorded and may be posted on our YouTube channel. We will notify applicants before anything is shown live or published.",
     paymentAmount: "Amount Paid",
@@ -736,8 +733,6 @@ const formTranslations = {
     urgentPrice: "አስቸኳይ፡ 200 ብር / 25 USD",
     abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
     liveNotice: "ለYouTube Live content ከማሳየታችን በፊት አመልካቾችን እናሳውቃለን።",
-    specialRequestAmount: "የልዩ ጥያቄ ክፍያ",
-    specialRequestAmountPlaceholder: "ተጨማሪ መጠን ካለ",
     youtubeNoticeTitle: "የYouTube Channel ማሳወቂያ",
     youtubeNotice: "በhost እና በrespondent መካከል የሚደረገው የስልክ ውይይት ይቀረጻል፣ በYouTube ቻናላችን ላይም ሊለጠፍ ይችላል።",
     paymentAmount: "የተከፈለ መጠን",
@@ -1122,9 +1117,7 @@ function HomePage() {
       return;
     }
 
-    const specialRequestAmount = Number(form.get("specialRequestAmount") || 0);
-    const cleanSpecialRequestAmount = Number.isFinite(specialRequestAmount) && specialRequestAmount > 0 ? specialRequestAmount : 0;
-    const paymentAmount = selectedPrice + cleanSpecialRequestAmount;
+    const paymentAmount = selectedPrice;
     const senderPhone = formatPhoneNumber(selectedCountryCode, form.get("phone"));
     const receiverPhone = formatPhoneNumber(receiverCountryCode, form.get("receiver"));
     const receiptLink = paymentMethod === "telebirr" ? normalizeTelebirrReceiptLink(form.get("receiptLink")) : "";
@@ -1174,7 +1167,6 @@ function HomePage() {
       contactChannel: selectedPaymentOption.contactChannel,
       paymentAmount: `${paymentAmount}`,
       paymentCurrency: selectedCurrency,
-      specialRequestAmount: cleanSpecialRequestAmount > 0 ? `${cleanSpecialRequestAmount}` : "",
       paymentStatus: formText.paymentStatusPending,
       cbeReceiptUrl: cbeReceiptUrl || receiptLink,
       receiptVerificationValue: receiptLink || cbeReceiptUrl,
@@ -1604,13 +1596,6 @@ function HomePage() {
                   )}
                 </div>
               </div>
-
-              <label>
-                <span>
-                  <Icon name="bolt" /> {formText.specialRequestAmount}
-                </span>
-                <input name="specialRequestAmount" type="number" min="0" step="1" placeholder={formText.specialRequestAmountPlaceholder} />
-              </label>
 
               <div className="notice-box">
                 <strong>{formText.youtubeNoticeTitle}</strong>
