@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { Lock, Save, AlertCircle, Check } from "lucide-react";
+import { useState, useEffect, type FormEvent } from "react";
 
 export default function Admin() {
   const [config, setConfig] = useState({
@@ -40,7 +39,7 @@ export default function Admin() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!password) {
       setMessage({ type: "error", text: "Please enter admin password" });
@@ -96,7 +95,6 @@ export default function Admin() {
 
         {message.text && (
           <div className={`notice-box ${message.type === "error" ? "error" : "success"}`}>
-            {message.type === "error" ? <AlertCircle size={20} /> : <Check size={20} />}
             <span>{message.text}</span>
           </div>
         )}
@@ -166,7 +164,7 @@ export default function Admin() {
           </label>
 
           <button type="submit" disabled={saving} className="submit-button">
-            <Save size={20} /> {saving ? "Saving..." : "Save Configuration"}
+            {saving ? "Saving..." : "Save Configuration"}
           </button>
         </form>
       </div>

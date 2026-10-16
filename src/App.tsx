@@ -416,7 +416,14 @@ function normalizeTelebirrReceiptLink(value: FormDataEntryValue | null) {
   }
 }
 
-function hasPaypalIdentity(value: string) {
+const defaultPaymentConfig = {
+    TELEBIRR_NUMBER: window.__RUNTIME_CONFIG__?.TELEBIRR_NUMBER ?? "0913885322",
+    TELEBIRR_ACCOUNT_NAME: window.__RUNTIME_CONFIG__?.TELEBIRR_ACCOUNT_NAME ?? "Fraol Eshetu Hailu",
+    PAYPAL_DISPLAY_NAME: window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis",
+    PAYPAL_USERNAME: window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9",
+  };
+
+function hasPaypalIdentity(value: string, config: typeof defaultPaymentConfig) {
   const normalized = normalizeComparableText(value);
   return (
     normalized.includes(normalizeComparableText(config.PAYPAL_DISPLAY_NAME)) ||
@@ -669,9 +676,9 @@ const formTranslations = {
     receiverPlaceholder: "Enter receiver's name or phone number",
     serviceTier: "Service",
     paymentDetails: "Payment details",
-    accountNo: `Telebirr: ${config.TELEBIRR_NUMBER}`,
-    accountName: config.TELEBIRR_ACCOUNT_NAME,
-    paypalAccount: `PayPal: ${config.PAYPAL_DISPLAY_NAME} (${config.PAYPAL_USERNAME})`,
+    accountNo: `Telebirr: ${defaultPaymentConfig.TELEBIRR_NUMBER}`,
+    accountName: defaultPaymentConfig.TELEBIRR_ACCOUNT_NAME,
+    paypalAccount: `PayPal: ${defaultPaymentConfig.PAYPAL_DISPLAY_NAME} (${defaultPaymentConfig.PAYPAL_USERNAME})`,
     basePrice: "Selected price",
     urgentPrice: "Urgent: 200 Birr / 25 USD",
     abroadContact: "Outside Ethiopia: we will contact you on WhatsApp.",
@@ -722,9 +729,9 @@ const formTranslations = {
     receiverPlaceholder: "የተቀባዩን ስም ወይም ስልክ ቁጥር ያስገቡ",
     serviceTier: "አገልግሎት",
     paymentDetails: "የክፍያ መረጃ",
-    accountNo: `ቴሌብር: ${config.TELEBIRR_NUMBER}`,
-    accountName: config.TELEBIRR_ACCOUNT_NAME,
-    paypalAccount: `PayPal: ${config.PAYPAL_DISPLAY_NAME} (${config.PAYPAL_USERNAME})`,
+    accountNo: `ቴሌብር: ${defaultPaymentConfig.TELEBIRR_NUMBER}`,
+    accountName: defaultPaymentConfig.TELEBIRR_ACCOUNT_NAME,
+    paypalAccount: `PayPal: ${defaultPaymentConfig.PAYPAL_DISPLAY_NAME} (${defaultPaymentConfig.PAYPAL_USERNAME})`,
     basePrice: "የተመረጠው ዋጋ",
     urgentPrice: "አስቸኳይ፡ 200 ብር / 25 USD",
     abroadContact: "ከውጭ ሀገር ለሚገኙ ደንበኞች በWhatsApp እናገኝዎታለን።",
@@ -1019,6 +1026,13 @@ function CountrySelect({ value, onChange }: { value: string; onChange: (val: str
 }
 
 export default function App() {
+  if (window.location.pathname.replace(/\/+$/, "") === "/admin") {
+    return <Admin />;
+  }
+  return <HomePage />;
+}
+
+function HomePage() {
   const [receiptName, setReceiptName] = useState("");
   const [receiptError, setReceiptError] = useState("");
   const [receiptOcrText, setReceiptOcrText] = useState("");
@@ -1029,13 +1043,7 @@ export default function App() {
   const [submissionError, setSubmissionError] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [config, setConfig] = useState({
-    TELEBIRR_NUMBER: window.__RUNTIME_CONFIG__?.TELEBIRR_NUMBER ?? "0913885322",
-    TELEBIRR_ACCOUNT_NAME: window.__RUNTIME_CONFIG__?.TELEBIRR_ACCOUNT_NAME ?? "Fraol Eshetu Hailu",
-    PAYPAL_DISPLAY_NAME: window.__RUNTIME_CONFIG__?.PAYPAL_DISPLAY_NAME ?? "Yonatan Woldegiorgis",
-    PAYPAL_USERNAME: window.__RUNTIME_CONFIG__?.PAYPAL_USERNAME ?? "@YonatanWoldegiorgis9",
-  });
+  const [config, setConfig] = useState(defaultPaymentConfig);
   const [language, setLanguage] = useState<"en" | "am">("am");
   const [selectedCountryCode, setSelectedCountryCode] = useState("+251");
 
@@ -1077,7 +1085,6 @@ export default function App() {
   const serviceSummaryText = serviceSummaryTranslations[language];
   const stepText = stepTranslations[language];
   const processText = processTranslations[language];
-  const formText = formTranslations[language];
   const faqText = faqTranslations[language];
   const selectedPaymentOption = paymentOptions[paymentOptionId];
   const serviceTier = selectedPaymentOption.tier;
@@ -1313,7 +1320,7 @@ export default function App() {
         console.info("[receipt] Reading PayPal receipt screenshot", { name: file.name });
         const receiptText = await readReceiptTextWithOcr(file);
 
-        if (!hasPaypalIdentity(receiptText)) {
+        if (!hasPaypalIdentity(receiptText, config)) {
           setCbeReceiptUrl("");
           setReceiptOcrText(receiptText);
           setReceiptError(formText.receiptQrMissing);
@@ -1420,22 +1427,12 @@ export default function App() {
               <option value="am">አማርኛ</option>
             </select>
           </label>
-          <button
-            className="header-cta"
-            onClick={() => setShowAdmin(!showAdmin)}
-            style={{ minWidth: "auto", padding: "13px 16px" }}
-          >
-            {showAdmin ? "Back" : "Admin"}
-          </button>
-          {!showAdmin && (
-            <a className="header-cta" href="#contact">
-              {text.cta}
-            </a>
-          )}
+          <a className="header-cta" href="#contact">
+            {text.cta}
+          </a>
         </div>
       </header>
 
-      {showAdmin ? <Admin /> : (
       <main id="home" className="page-shell">
         <section className="hero-section" aria-labelledby="hero-title">
           <div className="hero-copy">
@@ -1732,7 +1729,6 @@ export default function App() {
           <span className="tagline">{text.tagline}</span>
         </div>
       </footer>
-      )}
 
       {showSuccessModal && (
         <div className="success-modal-overlay" onClick={() => setShowSuccessModal(false)}>
